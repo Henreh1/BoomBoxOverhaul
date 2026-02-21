@@ -9,3 +9,7 @@ Thanks for the downloads, any bugs/errors use the Github link or contact me on d
 Happy jamming :D
 
 Henreh
+
+#NOTE
+#I believe this no longer works and i wont continue work on it
+If it does still work then happy days! :D
