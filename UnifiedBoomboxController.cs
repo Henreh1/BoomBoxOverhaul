@@ -208,7 +208,7 @@ namespace BoomBoxOverhaul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaul 2.0.0");
+            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh:D);
             GUI.Label(new Rect(35, 50, 460, 20), "Paste YouTube video or playlist URL:");
             pendingUrl = GUI.TextField(new Rect(35, 72, 470, 22), pendingUrl, 1000);
             GUI.Label(new Rect(35, 97, 470, 20), "State: " + statusText);
