@@ -41,8 +41,10 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 
 ## Credits
 
-Henreh. (Developer)
-Metaphorreur (Testing)
+-Henreh. (Developer)
+-bananas (Very good tester!)
+-Wozzie (Testing)
+-Metaphorreur (Testing)
 
 #Manual Install
 -For manual install Place the manual install folder insdie of `BepInEx/plugins` Folder!
