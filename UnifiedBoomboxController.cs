@@ -1,4 +1,4 @@
-﻿using GameNetcodeStuff;
+using GameNetcodeStuff;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,7 +11,7 @@ using UnityEngine.Networking;
 
 namespace BoomBoxOverhaul
 {
-    public class UnifiedBoomboxController : NetworkBehaviour
+    public class UnifiedBoomboxController : MonoBehaviour
     {
         public BoomboxItem Boombox;
         public AudioSource Audio;
@@ -55,12 +55,6 @@ namespace BoomBoxOverhaul
 
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
             ApplyLocalVolume();
-            UpdateTooltip();
-        }
-
-        public override void OnNetworkSpawn()
-        {
-            base.OnNetworkSpawn();
             UpdateTooltip();
         }
 
@@ -185,9 +179,7 @@ namespace BoomBoxOverhaul
                 case KeyCode.Period: return keyboard.periodKey.wasPressedThisFrame;
                 case KeyCode.Slash: return keyboard.slashKey.wasPressedThisFrame;
                 case KeyCode.Backslash: return keyboard.backslashKey.wasPressedThisFrame;
-
-                default:
-                    return false;
+                default: return false;
             }
         }
 
@@ -205,7 +197,7 @@ namespace BoomBoxOverhaul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh :D");
+            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh:D");
             GUI.Label(new Rect(35, 50, 460, 20), "Paste YouTube video or playlist URL:");
             pendingUrl = GUI.TextField(new Rect(35, 72, 470, 22), pendingUrl, 1000);
             GUI.Label(new Rect(35, 97, 470, 20), "State: " + statusText);
@@ -217,9 +209,9 @@ namespace BoomBoxOverhaul
 
             if (GUI.Button(new Rect(35, 155, 80, 20), "Play"))
             {
-                if (!string.IsNullOrEmpty(pendingUrl))
+                if (!string.IsNullOrEmpty(pendingUrl) && Boombox != null && Boombox.NetworkObject != null)
                 {
-                    RequestPlayServerRpc(pendingUrl.Trim(), default(ServerRpcParams));
+                    BoomBoxOverhaulNet.SendRequestPlay(Boombox.NetworkObject.NetworkObjectId, pendingUrl.Trim());
                     uiOpen = false;
                     SetCameraLocked(false);
                 }
@@ -229,7 +221,10 @@ namespace BoomBoxOverhaul
 
             if (GUI.Button(new Rect(125, 155, 80, 20), "Stop"))
             {
-                RequestStopServerRpc(default(ServerRpcParams));
+                if (Boombox != null && Boombox.NetworkObject != null)
+                {
+                    BoomBoxOverhaulNet.SendRequestStop(Boombox.NetworkObject.NetworkObjectId);
+                }
                 uiOpen = false;
                 SetCameraLocked(false);
             }
@@ -251,12 +246,7 @@ namespace BoomBoxOverhaul
             try
             {
                 PlayerControllerB localPlayer = GameNetworkManager.Instance != null ? GameNetworkManager.Instance.localPlayerController : null;
-                if (localPlayer == null)
-                {
-                    return;
-                }
-
-                if (localPlayer.currentlyHeldObjectServer == null)
+                if (localPlayer == null || localPlayer.currentlyHeldObjectServer == null)
                 {
                     return;
                 }
@@ -279,7 +269,6 @@ namespace BoomBoxOverhaul
             try
             {
                 PlayerControllerB localPlayer = GameNetworkManager.Instance != null ? GameNetworkManager.Instance.localPlayerController : null;
-
                 if (localPlayer != null && localPlayer.playerActions != null)
                 {
                     if (locked)
@@ -322,7 +311,6 @@ namespace BoomBoxOverhaul
             try
             {
                 PlayerControllerB localPlayer = GameNetworkManager.Instance != null ? GameNetworkManager.Instance.localPlayerController : null;
-
                 if (localPlayer != null && localPlayer.playerActions != null)
                 {
                     localPlayer.playerActions.Disable();
@@ -384,11 +372,11 @@ namespace BoomBoxOverhaul
 
             Boombox.itemProperties.toolTips = new string[]
             {
-        "[" + Plugin.OpenUiKey.Value + "] URL Menu",
-        "[" + Plugin.VolumeDownKey.Value + "/" + Plugin.VolumeUpKey.Value + "] Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%",
-        "Track: " + scrollingTitle,
-        "State: " + statusText,
-        "Deps: " + DependencyBootstrapper.GetStatus()
+                "[" + Plugin.OpenUiKey.Value + "] URL Menu",
+                "[" + Plugin.VolumeDownKey.Value + "/" + Plugin.VolumeUpKey.Value + "] Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%",
+                "Track: " + scrollingTitle,
+                "State: " + statusText,
+                "Deps: " + DependencyBootstrapper.GetStatus()
             };
         }
 
@@ -431,18 +419,17 @@ namespace BoomBoxOverhaul
             }
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        public void RequestPlayServerRpc(string url, ServerRpcParams rpcParams)
+        public void ServerHandlePlay(string url)
         {
             if (!DependencyBootstrapper.GetState().IsReady())
             {
-                RejectPlayClientRpc("Dependencies not ready");
+                ClientRejectPlay("Dependencies not ready");
                 return;
             }
 
             if (!UrlHelpers.IsLikelyYoutubeUrl(url))
             {
-                RejectPlayClientRpc("Invalid URL");
+                ClientRejectPlay("Invalid URL");
                 return;
             }
 
@@ -460,7 +447,7 @@ namespace BoomBoxOverhaul
                 List<string> ids;
                 if (!YtDlpBridge.ResolvePlaylistIds(url, out ids) || ids.Count == 0)
                 {
-                    RejectPlayClientRpc("Playlist resolve failed");
+                    ClientRejectPlay("Playlist resolve failed");
                     isPreparing = false;
                     return;
                 }
@@ -474,7 +461,7 @@ namespace BoomBoxOverhaul
                 string videoId = UrlHelpers.TryExtractVideoId(url);
                 if (string.IsNullOrEmpty(videoId))
                 {
-                    RejectPlayClientRpc("Could not parse video id");
+                    ClientRejectPlay("Could not parse video id");
                     isPreparing = false;
                     return;
                 }
@@ -484,8 +471,15 @@ namespace BoomBoxOverhaul
                 currentVideoId = videoId;
             }
 
+            if (Boombox == null || Boombox.NetworkObject == null)
+            {
+                ClientRejectPlay("Boombox missing network object");
+                isPreparing = false;
+                return;
+            }
+
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            PrepareTrackClientRpc(currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
+            BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
             {
@@ -495,15 +489,13 @@ namespace BoomBoxOverhaul
             serverWaitRoutine = StartCoroutine(ServerWaitForReadyThenPlay());
         }
 
-        [ClientRpc]
-        public void RejectPlayClientRpc(string reason)
+        private void ClientRejectPlay(string reason)
         {
             statusText = reason;
             isPreparing = false;
         }
 
-        [ClientRpc]
-        public void PrepareTrackClientRpc(string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
+        public void ClientPrepareTrack(string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
         {
             currentVideoId = videoId;
             playlist.VideoIds.Clear();
@@ -536,7 +528,10 @@ namespace BoomBoxOverhaul
             if (!fetchOk || !File.Exists(info.cachePath))
             {
                 statusText = "Download failed";
-                NotifyReadyServerRpc(false, default(ServerRpcParams));
+                if (Boombox != null && Boombox.NetworkObject != null)
+                {
+                    BoomBoxOverhaulNet.SendNotifyReady(Boombox.NetworkObject.NetworkObjectId, false);
+                }
                 yield break;
             }
 
@@ -550,7 +545,10 @@ namespace BoomBoxOverhaul
                 if (req.result != UnityWebRequest.Result.Success)
                 {
                     statusText = "Clip load failed";
-                    NotifyReadyServerRpc(false, default(ServerRpcParams));
+                    if (Boombox != null && Boombox.NetworkObject != null)
+                    {
+                        BoomBoxOverhaulNet.SendNotifyReady(Boombox.NetworkObject.NetworkObjectId, false);
+                    }
                     yield break;
                 }
 
@@ -573,14 +571,16 @@ namespace BoomBoxOverhaul
                 tooltipScrollTimer = 0f;
                 ApplyLocalVolume();
                 statusText = "Ready: " + clip.name;
-                NotifyReadyServerRpc(true, default(ServerRpcParams));
+
+                if (Boombox != null && Boombox.NetworkObject != null)
+                {
+                    BoomBoxOverhaulNet.SendNotifyReady(Boombox.NetworkObject.NetworkObjectId, true);
+                }
             }
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        public void NotifyReadyServerRpc(bool success, ServerRpcParams rpcParams)
+        public void ServerNotifyReady(ulong clientId, bool success)
         {
-            ulong clientId = rpcParams.Receive.SenderClientId;
             if (success)
             {
                 readyClients.Add(clientId);
@@ -599,19 +599,22 @@ namespace BoomBoxOverhaul
 
             if (readyClients.Count == 0)
             {
-                RejectPlayClientRpc("No client prepared track");
+                ClientRejectPlay("No client prepared track");
                 isPreparing = false;
                 yield break;
             }
 
-            BeginPlaybackClientRpc(currentVideoId);
+            if (Boombox != null && Boombox.NetworkObject != null)
+            {
+                BoomBoxOverhaulNet.BroadcastBeginPlayback(Boombox.NetworkObject.NetworkObjectId, currentVideoId);
+            }
+
             isPreparing = false;
             isPlayingCustom = true;
             statusText = "Playing";
         }
 
-        [ClientRpc]
-        public void BeginPlaybackClientRpc(string videoId)
+        public void ClientBeginPlayback(string videoId)
         {
             currentVideoId = videoId;
             isPreparing = false;
@@ -629,14 +632,15 @@ namespace BoomBoxOverhaul
             }
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        public void RequestStopServerRpc(ServerRpcParams rpcParams)
+        public void ServerHandleStop()
         {
-            StopPlaybackClientRpc();
+            if (Boombox != null && Boombox.NetworkObject != null)
+            {
+                BoomBoxOverhaulNet.BroadcastStopPlayback(Boombox.NetworkObject.NetworkObjectId);
+            }
         }
 
-        [ClientRpc]
-        public void StopPlaybackClientRpc()
+        public void ClientStopPlayback()
         {
             isPreparing = false;
             isPlayingCustom = false;
@@ -656,7 +660,7 @@ namespace BoomBoxOverhaul
 
         private void OnTrackEndedLocal()
         {
-            if (!Plugin.AutoplayPlaylist.Value || !IsServer)
+            if (!Plugin.AutoplayPlaylist.Value || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
             {
                 isPlayingCustom = false;
                 statusText = "Finished";
@@ -684,8 +688,13 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
+            if (Boombox == null || Boombox.NetworkObject == null)
+            {
+                return;
+            }
+
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            PrepareTrackClientRpc(currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
+            BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
             {
