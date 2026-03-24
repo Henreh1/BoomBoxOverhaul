@@ -52,6 +52,6 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 
 ## Thunderstore Link
 
-0 https://thunderstore.io/c/lethal-company/p/Clarity/BoomBoxOverhaul/
+- https://thunderstore.io/c/lethal-company/p/Clarity/BoomBoxOverhaul/
 
 ## Please do not copy and paste this code and claim it as your own, that is why no License is attached.
