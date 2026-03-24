@@ -72,6 +72,11 @@ namespace BoomBoxOverhaul
                 didScroll = true;
             }
 
+            if (uiOpen)
+            {
+                StopVanillaBoomboxAudio();
+            }
+
             UpdateTooltip();
 
             if (didScroll)
@@ -99,6 +104,12 @@ namespace BoomBoxOverhaul
             if (IsConfiguredKeyPressed(Plugin.OpenUiKey.Value) && IsHeldByLocalPlayer())
             {
                 uiOpen = !uiOpen;
+
+                if (uiOpen)
+                {
+                    StopAllBoomboxAudioForUi();
+                }
+
                 SetCameraLocked(uiOpen);
                 Plugin.Log("Toggled boombox UI. Now open = " + uiOpen);
             }
@@ -197,7 +208,7 @@ namespace BoomBoxOverhaul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh:D");
+            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaul 2.0.0");
             GUI.Label(new Rect(35, 50, 460, 20), "Paste YouTube video or playlist URL:");
             pendingUrl = GUI.TextField(new Rect(35, 72, 470, 22), pendingUrl, 1000);
             GUI.Label(new Rect(35, 97, 470, 20), "State: " + statusText);
@@ -259,6 +270,38 @@ namespace BoomBoxOverhaul
             catch (Exception ex)
             {
                 Plugin.Warn("Failed to refresh held item tooltip: " + ex);
+            }
+        }
+
+        private void StopVanillaBoomboxAudio()
+        {
+            try
+            {
+                if (Boombox == null)
+                {
+                    return;
+                }
+
+                if (Boombox.boomboxAudio != null)
+                {
+                    Boombox.boomboxAudio.Stop();
+                }
+
+                Boombox.isPlayingMusic = false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Warn("Failed to stop vanilla boombox audio: " + ex);
+            }
+        }
+
+        private void StopAllBoomboxAudioForUi()
+        {
+            StopVanillaBoomboxAudio();
+
+            if (Audio != null && Audio != Boombox.boomboxAudio && !isPlayingCustom)
+            {
+                Audio.Stop();
             }
         }
 
@@ -442,6 +485,8 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
+            StopVanillaBoomboxAudio();
+
             if (UrlHelpers.IsPlaylistOnlyUrl(url))
             {
                 List<string> ids;
@@ -506,6 +551,8 @@ namespace BoomBoxOverhaul
             isPlayingCustom = false;
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
+
+            StopVanillaBoomboxAudio();
 
             if (localLoadRoutine != null)
             {
@@ -626,6 +673,7 @@ namespace BoomBoxOverhaul
             if (Audio != null && Audio.clip != null)
             {
                 suppressVanillaStopOnce = true;
+                StopVanillaBoomboxAudio();
                 Audio.Stop();
                 Audio.time = 0f;
                 Audio.Play();
@@ -692,6 +740,8 @@ namespace BoomBoxOverhaul
             {
                 return;
             }
+
+            StopVanillaBoomboxAudio();
 
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
             BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
