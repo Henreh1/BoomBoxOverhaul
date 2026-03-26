@@ -49,10 +49,14 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 - Coheesion (Good guinea pig!)
 
 ## Manual Install
+
 - For manual install Place the manual install folder inside of `BepInEx/plugins` Folder!
 
 ## Thunderstore Link
 
 - https://thunderstore.io/c/lethal-company/p/Clarity/BoomBoxOverhaul/
+
+# Old V1 Source Code
+- https://github.com/Henreh1/BoomBoxOverhaulV1-OLD
 
 ## Please do not copy and paste this code and claim it as your own, that is why no License is attached.
