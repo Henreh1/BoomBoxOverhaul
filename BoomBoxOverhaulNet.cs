@@ -1,4 +1,4 @@
-uusing System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -16,6 +16,8 @@ namespace BoomBoxOverhaul
         private const string MsgRequestStop = "BoomBoxOverhaul_RequestStop";
         private const string MsgStopPlayback = "BoomBoxOverhaul_StopPlayback";
         private const string MsgRejectPlay = "BoomBoxOverhaul_RejectPlay";
+        private const string MsgSetVolume = "BoomBoxOverhaul_SetVolume";
+        private const string MsgApplyVolume = "BoomBoxOverhaul_ApplyVolume";
 
         private static MonoBehaviour host;
         private static bool initialized;
@@ -81,6 +83,8 @@ namespace BoomBoxOverhaul
             mm.RegisterNamedMessageHandler(MsgRequestStop, OnRequestStop);
             mm.RegisterNamedMessageHandler(MsgStopPlayback, OnStopPlayback);
             mm.RegisterNamedMessageHandler(MsgRejectPlay, OnRejectPlay);
+            mm.RegisterNamedMessageHandler(MsgSetVolume, OnSetVolume);
+            mm.RegisterNamedMessageHandler(MsgApplyVolume, OnApplyVolume);
 
             handlersRegistered = true;
             Plugin.Log("BoomBoxOverhaul network handlers registered.");
@@ -102,6 +106,8 @@ namespace BoomBoxOverhaul
             mm.UnregisterNamedMessageHandler(MsgRequestStop);
             mm.UnregisterNamedMessageHandler(MsgStopPlayback);
             mm.UnregisterNamedMessageHandler(MsgRejectPlay);
+            mm.UnregisterNamedMessageHandler(MsgSetVolume);
+            mm.UnregisterNamedMessageHandler(MsgApplyVolume);
 
             handlersRegistered = false;
             Plugin.Log("BoomBoxOverhaul network handlers unregistered.");
@@ -267,6 +273,43 @@ namespace BoomBoxOverhaul
             }
         }
 
+        public static void SendSetVolume(ulong networkObjectId, float volume)
+        {
+            if (boundManager == null || !handlersRegistered || !boundManager.IsClient)
+            {
+                Plugin.Warn("SendSetVolume failed: network not ready.");
+                return;
+            }
+
+            using (FastBufferWriter writer = new FastBufferWriter(256, Allocator.Temp))
+            {
+                writer.WriteValueSafe(networkObjectId);
+                writer.WriteValueSafe(volume);
+                boundManager.CustomMessagingManager.SendNamedMessage(MsgSetVolume, NetworkManager.ServerClientId, writer);
+            }
+        }
+
+        public static void BroadcastApplyVolume(ulong networkObjectId, float volume)
+        {
+            if (boundManager == null || !handlersRegistered || !boundManager.IsServer)
+            {
+                Plugin.Warn("BroadcastApplyVolume failed: server network not ready.");
+                return;
+            }
+
+            ulong[] clientIds = GetConnectedClientIds();
+            int i;
+            for (i = 0; i < clientIds.Length; i++)
+            {
+                using (FastBufferWriter writer = new FastBufferWriter(256, Allocator.Temp))
+                {
+                    writer.WriteValueSafe(networkObjectId);
+                    writer.WriteValueSafe(volume);
+                    boundManager.CustomMessagingManager.SendNamedMessage(MsgApplyVolume, clientIds[i], writer);
+                }
+            }
+        }
+
         private static void OnRequestPlay(ulong senderClientId, FastBufferReader reader)
         {
             ulong networkObjectId;
@@ -400,6 +443,44 @@ namespace BoomBoxOverhaul
             if (controller != null)
             {
                 controller.ClientRejectPlay(reason);
+            }
+        }
+
+        private static void OnSetVolume(ulong senderClientId, FastBufferReader reader)
+        {
+            ulong networkObjectId;
+            float volume;
+
+            reader.ReadValueSafe(out networkObjectId);
+            reader.ReadValueSafe(out volume);
+
+            UnifiedBoomboxController controller = GetController(networkObjectId);
+            if (controller != null)
+            {
+                controller.ServerHandleSetVolume(volume);
+            }
+            else
+            {
+                Plugin.Warn("OnSetVolume could not find controller for object " + networkObjectId);
+            }
+        }
+
+        private static void OnApplyVolume(ulong senderClientId, FastBufferReader reader)
+        {
+            ulong networkObjectId;
+            float volume;
+
+            reader.ReadValueSafe(out networkObjectId);
+            reader.ReadValueSafe(out volume);
+
+            UnifiedBoomboxController controller = GetController(networkObjectId);
+            if (controller != null)
+            {
+                controller.ClientApplyNetworkVolume(volume);
+            }
+            else
+            {
+                Plugin.Warn("OnApplyVolume could not find controller for object " + networkObjectId);
             }
         }
 
