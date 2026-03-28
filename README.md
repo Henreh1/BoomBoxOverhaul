@@ -13,9 +13,6 @@ BoomBoxOverhaulV2 adds:
 - Infinite battery option
 - Keep-playing-while-pocketed behavior
 
-### Thunderstore / r2modman
-Install through Thunderstore or your mod manager of choice.
-
 ## Usage
 
 - Hold a boombox and press `B` to open the URL UI.
@@ -38,6 +35,7 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 - Cache size
 - Playlist autoplay
 - Dependency auto-download behavior
+- Server wide or Local volume options (Host of the session will determine this), this is to avoid abuse of the volume controls.
 
 ## Credits
 
@@ -47,14 +45,20 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 - Wozzie (Testing)
 - Coheesion (Very good guinea pig!)
 - Langerz (Strange tester!)
-- Jvggr (Testing)
+- Jvggr (Emotional Support Tester!)
+- Josi (Bug finder)
+
+## Known Incompatibilities 
+
+- Runtime_Netcode_Patcher
 
 ## Planned content
 
 - I am looking to add back the volume change ability when looking at a place boombox, I recently found my source for V1 so expect this soon
 - I am looking to improve performance with this mod soon
 - I am looking to make the mod compatiable with Spotify and potentially soundcloud links
+- I am looking to remove boombox weight value, I am currently busy so will only be doing bugfixes this week from inital V2 launch 
 
 ## Issues
 
-There may be issues because I am still trying to figure out YTDL and it has been a while since I created modifications for this game. If there are any ping me in the Lethal company modding discord (@henreh.) or use the github issues page :D
+There may be issues because I am still trying to figure out YTDL and it has been a while since I created modifications for this game. If there are any ping me in the Lethal company modding/regular discord (@henreh.) or use the github issues page :D
