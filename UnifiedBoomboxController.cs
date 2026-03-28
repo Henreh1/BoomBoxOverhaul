@@ -118,14 +118,18 @@ namespace BoomBoxOverhaul
 
         private void HandleInput()
         {
-        if (IsConfiguredKeyPressed(Plugin.OpenUiKey.Value) && IsHeldByLocalPlayer())
-{
-    uiOpen = !uiOpen;
-    if (!uiOpen)
-    {
-        StopAllBoomboxAudioForUi();
-    }
-}
+            if (IsConfiguredKeyPressed(Plugin.OpenUiKey.Value) && IsHeldByLocalPlayer())
+            {
+                uiOpen = !uiOpen;
+                if (!uiOpen)
+                {
+                    StopAllBoomboxAudioForUi();
+                }
+
+                SetCameraLocked(uiOpen);
+                Plugin.Log("Toggled boombox UI: " + (uiOpen ? "Open" : "Closed"));
+            }
+
             if (IsConfiguredKeyPressed(Plugin.VolumeUpKey.Value) && IsRelevantToLocalPlayer())
             {
                 float nextVolume = Mathf.Clamp(localVolume + Plugin.VolumeStep.Value, 0f, 2f);
@@ -155,21 +159,6 @@ namespace BoomBoxOverhaul
                     ApplyLocalVolume();
                 }
             }
-        }
-        public void ServerHandleSetVolume(float volume)
-        {
-            float clamped = Mathf.Clamp(volume, 0f, 2f);
-
-            if (Boombox != null && Boombox.NetworkObject != null)
-            {
-                BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
-            }
-        }
-
-        public void ClientApplyNetworkVolume(float volume)
-        {
-            localVolume = Mathf.Clamp(volume, 0f, 2f);
-            ApplyLocalVolume();
         }
         private bool IsConfiguredKeyPressed(KeyCode keyCode)
         {
@@ -914,5 +903,20 @@ namespace BoomBoxOverhaul
 
             return isPlayingCustom;
         }
-    }
-}
+    
+    public void ServerHandleSetVolume(float volume)
+        {
+            float clamped = Mathf.Clamp(volume, 0f, 2f);
+
+            if (Boombox != null && Boombox.NetworkObject != null)
+            {
+                BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
+            }
+        }
+
+        public void ClientApplyNetworkVolume(float volume)
+        {
+            localVolume = Mathf.Clamp(volume, 0f, 2f);
+            ApplyLocalVolume();
+        }
+    } }
