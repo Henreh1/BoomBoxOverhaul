@@ -59,7 +59,7 @@ Config file (`henreh.boomboxoverhaul.cfg`) is generated through BepInEx and cont
 - I am looking to make the mod compatiable with Spotify and potentially soundcloud links
 - I am looking to remove boombox weight value, I am currently busy so will only be doing bugfixes this week from inital V2 launch 
 
-##Link to V1 source code which is open for anyone!
+## Link to V1 source code which is open for anyone!
 
 - https://github.com/Henreh1/BoomBoxOverhaulV1-OLD
 
