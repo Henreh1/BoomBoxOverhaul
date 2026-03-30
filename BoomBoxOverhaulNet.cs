@@ -41,15 +41,15 @@ namespace BoomBoxOverhaul
         {
             while (true)
             {
-                TryBindToNetworkManager();
+            TryBindToNetworkManager();
 
-                if (boundManager != null && handlersRegistered && boundManager.IsServer)
-                {
-                    BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value);
-                }
-
-                yield return new WaitForSeconds(1f);
+            if (boundManager != null && handlersRegistered && boundManager.IsServer)
+            {
+                BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value, Plugin.WeightlessBoombox.Value);
             }
+
+            yield return new WaitForSeconds(1f);
+        }
         }
 
         private static void TryBindToNetworkManager()
@@ -319,7 +319,7 @@ namespace BoomBoxOverhaul
             }
         }
 
-        public static void BroadcastSyncSettings(bool localVolumeOnly)
+       public static void BroadcastSyncSettings(bool localVolumeOnly, bool WeightlessBoombox)
         {
             if (boundManager == null || !handlersRegistered || !boundManager.IsServer)
             {
@@ -333,11 +333,12 @@ namespace BoomBoxOverhaul
                 using (FastBufferWriter writer = new FastBufferWriter(64, Allocator.Temp))
                 {
                     writer.WriteValueSafe(localVolumeOnly);
+                    writer.WriteValueSafe(WeightlessBoombox);
                     boundManager.CustomMessagingManager.SendNamedMessage(MsgSyncSettings, clientIds[i], writer);
                 }
             }
 
-            Plugin.Log("Broadcast synced settings. LocalVolumeOnly = " + localVolumeOnly);
+            Plugin.Log("Sent synchronised settings. LocalVolumeOnly = " + localVolumeOnly + ", WeightlessBoombx = " + WeightlessBoombox);
         }
 
         private static void OnRequestPlay(ulong senderClientId, FastBufferReader reader)
@@ -529,12 +530,25 @@ namespace BoomBoxOverhaul
         private static void OnSyncSettings(ulong senderClientId, FastBufferReader reader)
         {
             bool localVolumeOnly;
+            bool weightlessBoombox;
+
             reader.ReadValueSafe(out localVolumeOnly);
+            reader.ReadValueSafe( out weightlessBoombox);
 
             Plugin.SyncedLocalVolumeOnly = localVolumeOnly;
             Plugin.HasSyncedVolumeMode = true;
 
-            Plugin.Log("Received synced settings. LocalVolumeOnly = " + localVolumeOnly);
+            Plugin.SyncedWeightlessBoombox = weightlessBoombox;
+            Plugin.HasSyncedWeightlessBoombox = true;
+
+            Plugin.Log("Recieved synchronised settings. LocalVolumeOnly = " + localVolumeOnly + ", WeightlessBoomx = " + weightlessBoombox);
+
+            UnifiedBoomboxController[] controllers = UnityEngine.Object.FindObjectsOfType<UnifiedBoomboxController>();
+            int i;
+            for (i = 0; i < controllers.Length; i++)
+            {
+                controllers[i].RefreshWeightSettingsFromSync();
+            }
         }
 
         private static ulong[] GetConnectedClientIds()

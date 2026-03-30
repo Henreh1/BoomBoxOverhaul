@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq.Expressions;
 using System.Threading;
 using Unity.Netcode;
 using UnityEngine;
@@ -43,6 +44,7 @@ namespace BoomBoxOverhaul
             Plugin.Log("UnifiedBoomboxController attached to boombox.");
 
             Boombox = GetComponent<BoomboxItem>();
+            ApplyWeightSettings();
 
             AudioSource[] sources = GetComponents<AudioSource>();
             Audio = null;
@@ -441,6 +443,33 @@ namespace BoomBoxOverhaul
                 Plugin.Warn("Camera lock failed: " + ex);
             }
         }
+
+        private void ApplyWeightSettings()
+        {
+            try
+            {
+                if (Boombox == null || Boombox.itemProperties == null)
+                {
+                return;
+            }
+
+            if (Plugin.WeightlessBoombox.Value)
+            {
+                Boombox.itemProperties.weight = 1f;
+                Plugin.Log("The boombox is as light as a feather!");
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Warn("Unfortunately the boombox is made of tungsten: " + ex);
+        }
+        }
+        public void RefreshWeightSettingsFromSync()
+            {
+            ApplyWeightSettings();
+        }
+        
+    
 
         private string GetScrollingTrackText()
         {

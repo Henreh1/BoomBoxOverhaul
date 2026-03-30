@@ -17,6 +17,7 @@ namespace BoomBoxOverhaul
         internal static Harmony Harmony;
 
         internal static ConfigEntry<bool> InfiniteBattery;
+        internal static ConfigEntry<bool> WeightlessBoombox;
         internal static ConfigEntry<bool> KeepPlayingPocketed;
         internal static ConfigEntry<float> VolumeStep;
         internal static ConfigEntry<float> DefaultVolume;
@@ -38,6 +39,8 @@ namespace BoomBoxOverhaul
 
         internal static bool SyncedLocalVolumeOnly = true;
         internal static bool HasSyncedVolumeMode = false;
+        internal static bool SyncedWeightlessBoombox = true;
+        internal static bool HasSyncedWeightlessBoombox = false;
 
         internal static string PluginFolder = "";
         internal static string CacheFolder = "";
@@ -48,6 +51,7 @@ namespace BoomBoxOverhaul
             Instance = this;
 
             InfiniteBattery = Config.Bind("Gameplay", "InfiniteBattery", true, "Boombox does not require battery.");
+            WeightlessBoombox = Config.Bind("Gameplay", "WeightlessBoombox", true, "When set to true the boombox is as light as a feather!");
             KeepPlayingPocketed = Config.Bind("Gameplay", "KeepPlayingPocketed", true, "Boombox keeps playing when pocketed.");
             VolumeStep = Config.Bind("Audio", "VolumeStep", 0.1f, "Volume increment/decrement amount.");
             DefaultVolume = Config.Bind("Audio", "DefaultVolume", 1.0f, "Default local boombox volume.");
@@ -105,6 +109,16 @@ namespace BoomBoxOverhaul
             }
 
             return LocalVolumeOnly.Value;
+        }
+        internal static bool UseWeightlessBoombx()
+        {
+            if (Unity.Netcode.NetworkManager.Singleton != null
+            && Unity.Netcode.NetworkManager.Singleton.IsClient
+            && HasSyncedWeightlessBoombox)
+            {
+                return SyncedWeightlessBoombox;
+            }
+            return WeightlessBoombox.Value;
         }
 
         internal static void Log(string msg)
