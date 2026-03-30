@@ -39,6 +39,9 @@ namespace BoomBoxOverhaul
         private float tooltipScrollTimer = 0f;
         private int tooltipScrollIndex = 0;
 
+        private UnityEngine.Audio.AudioMixer mixer;
+        private UnityEnigne.Audio.AudioMixerGroup mixerGroup;
+
         private void Awake()
         {
             Plugin.Log("UnifiedBoomboxController attached to boombox.");
@@ -74,6 +77,7 @@ namespace BoomBoxOverhaul
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
             ApplyLocalVolume();
             UpdateTooltip();
+            SetupAudioMixer();
         }
 
         private void Update()
@@ -317,16 +321,36 @@ namespace BoomBoxOverhaul
             }
         }
 
-        private void ApplyLocalVolume()
+       private void ApplyLocalVolume()
+       {
+        if (Audio == null)
         {
-            if (Audio != null)
-            {
-                Audio.volume = localVolume;
-            }
-
-            UpdateTooltip();
-            RefreshHeldItemTooltip();
+            return;
         }
+
+        float volume = Mathf.Clamp(localVolume, 0.0001f, 1.8f); // 1.8 instead of 2 to avoid ear destruction kind of lol
+
+        //Decible conversion (I hope)
+        float dB = Mathf.Log10(volume) * 20f;
+
+        try
+        {
+            if (mixer !- null)
+            {
+                mixer.SetFloat("Volume", dB);
+            }
+            else
+            {
+                Audio.volume = Mathf.Clamp01(volume);
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Warn("Volume application failed (damn): " + ex);
+        }
+        UpdateTooltip();
+        RefreshHeldItemTooltip();
+       }
 
         private void RefreshHeldItemTooltip()
         {
@@ -378,6 +402,33 @@ namespace BoomBoxOverhaul
             if (Audio != null && Audio != Boombox.boomboxAudio && !isPlayingCustom)
             {
                 Audio.Stop();
+            }
+        }
+        // Aduio mixer for different presets of audio style (experimental)
+        private void SetupAudioMixer()
+        {
+            try
+            {
+                mixer = new UnityEngine.Audio.AudioMixer();
+
+                UnityEngine.Audio.AudioMixerGroup[] groups = mixer.FindMatchingGroups("Master");
+
+                if (groups !=null && groups.lengths > 0)
+                {
+                    mixerGroup = groups[0];
+                }
+
+                if (mixerGroup != null && Audio != null)
+                {
+                    Audio.outputAudioMixerGroup = mixerGroup;
+                }
+
+                mixer.SetFloat("Volume", 0f);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Warn("Failed to start Audio Mixer: " + ex);
+             
             }
         }
 
