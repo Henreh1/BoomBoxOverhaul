@@ -42,16 +42,44 @@ namespace BoomBoxOverhaul
             while (true)
             {
             TryBindToNetworkManager();
+                yield return new WaitForSeconds(1f);
+        }
+        }
 
-            if (boundManager != null && handlersRegistered && boundManager.IsServer)
+        private static void OnClientListChanged(ulong clientId)
+        {
+            if (boundManager == null || !handlersRegistered || !boundManager.IsServer)
             {
-                BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value, Plugin.WeightlessBoombox.Value);
+                return;
+            }
+            Plugin.Log("Client list changed, broadcasting sync settings. ClientId: " + clientId);
+            BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value, Plugin.WeightlessBoombox.Value);
+        }
+
+        private static bool clientEventsHooked = false;
+
+        private static void UnhookClientEvents()
+        {
+            if (boundManager == null || !clientEventsHooked)
+            {
+                return;
+            }
+            boundManager.OnClientConnectedCallback -= OnClientListChanged;
+            boundManager.OnClientDisconnectCallback -= OnClientListChanged;
+            clientEventsHooked = false;
+        }
+        private static void HookClientEvents()
+        {
+            if (boundManager == null || clientEventsHooked)
+            {
+                return;
             }
 
-            yield return new WaitForSeconds(1f);
-        }
-        }
+            boundManager.OnClientConnectedCallback += OnClientListChanged;
+            boundManager.OnClientDisconnectCallback += OnClientListChanged;
 
+            clientEventsHooked = true;
+        }
         private static void TryBindToNetworkManager()
         {
             NetworkManager nm = NetworkManager.Singleton;
@@ -62,10 +90,19 @@ namespace BoomBoxOverhaul
 
             if (boundManager != nm)
             {
+                UnhookClientEvents();
                 UnregisterHandlers();
+
                 boundManager = nm;
                 handlersRegistered = false;
-                Plugin.Log("BoomBoxOverhaul bound to NetworkManager.");
+                clientEventsHooked = false;
+
+                if (!handlersRegistered)
+                {
+                    RegisterHandlers();
+                }
+                HookClientEvents();
+                Plugin.Log("NetworkManger bind thingies done hopefully");
             }
 
             if (!handlersRegistered)
@@ -533,13 +570,21 @@ namespace BoomBoxOverhaul
             bool weightlessBoombox;
 
             reader.ReadValueSafe(out localVolumeOnly);
-            reader.ReadValueSafe( out weightlessBoombox);
+            reader.ReadValueSafe(out weightlessBoombox);
+
+            bool changed =
+                !Plugin.HasSyncedVolumeMode || Plugin.SyncedLocalVolumeOnly != localVolumeOnly || Plugin.SyncedWeightlessBoombox != weightlessBoombox;
 
             Plugin.SyncedLocalVolumeOnly = localVolumeOnly;
             Plugin.HasSyncedVolumeMode = true;
 
             Plugin.SyncedWeightlessBoombox = weightlessBoombox;
             Plugin.HasSyncedWeightlessBoombox = true;
+
+            if (!changed)
+            {
+                return;
+            }
 
             Plugin.Log("Recieved synchronised settings. LocalVolumeOnly = " + localVolumeOnly + ", WeightlessBoomx = " + weightlessBoombox);
 
