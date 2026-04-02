@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Unity.Netcode;
 using UnityEngine;
@@ -39,9 +40,6 @@ namespace BoomBoxOverhaul
         private float tooltipScrollTimer = 0f;
         private int tooltipScrollIndex = 0;
 
-        private UnityEngine.Audio.AudioMixer mixer;
-        private UnityEngine.Audio.AudioMixerGroup mixerGroup;
-
         private void Awake()
         {
             Plugin.Log("UnifiedBoomboxController attached to boombox.");
@@ -70,6 +68,7 @@ namespace BoomBoxOverhaul
 
             Audio.playOnAwake = false;
             Audio.loop = false;
+            Audio.dopplerLevel = 0f;
             ApplyAudioModeSettings();
 
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
@@ -147,7 +146,7 @@ namespace BoomBoxOverhaul
                 {
                     if (Boombox != null && Boombox.NetworkObject != null)
                     {
-                        Plugin.Log("Sending server volume: " + localVolume);
+                        Plugin.Warn("Sending server volume: " + localVolume);
                         BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, localVolume);
                     }
                     else
@@ -265,17 +264,18 @@ namespace BoomBoxOverhaul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh :D");
+            GUI.Box(new Rect(20, 20, 520, 205), "BoomBoxOverhaulV2 By Henreh :D");
             GUI.Label(new Rect(35, 50, 460, 20), "Paste YouTube video or playlist URL:");
             pendingUrl = GUI.TextField(new Rect(35, 72, 470, 22), pendingUrl, 1000);
             GUI.Label(new Rect(35, 97, 470, 20), "State: " + statusText);
             GUI.Label(new Rect(35, 115, 470, 20), "Dependencies: " + DependencyBootstrapper.GetStatus());
             GUI.Label(new Rect(35, 133, 470, 20), "Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%");
+            GUI.Label(new Rect(35, 151, 470, 20), "Audio Mode: " + Plugin.UseAudioMode());
 
             bool wasEnabled = GUI.enabled;
             GUI.enabled = DependencyBootstrapper.GetState().IsReady();
 
-            if (GUI.Button(new Rect(35, 155, 80, 20), "Play"))
+            if (GUI.Button(new Rect(35, 173, 80, 20), "Play"))
             {
                 Plugin.Log("Play button pressed.");
 
@@ -300,7 +300,7 @@ namespace BoomBoxOverhaul
 
             GUI.enabled = wasEnabled;
 
-            if (GUI.Button(new Rect(125, 155, 80, 20), "Stop"))
+            if (GUI.Button(new Rect(125, 173, 80, 20), "Stop"))
             {
                 Plugin.Log("Stop button pressed.");
 
@@ -323,26 +323,12 @@ namespace BoomBoxOverhaul
                 return;
             }
 
-            float clamped = Mathf.Clamp(localVolume, 0f, 2f);
-            float appliedVolume;
-
-            if (clamped <= 1f)
-            {
-                appliedVolume = clamped;
-            }
-            else
-            {
-                //Something like that I think :/
-                appliedVolume = 1f + ((clamped - 1f) * 1.2f);
-            }
-
-            Audio.volume = appliedVolume;
-
+            Audio.volume = Mathf.Clamp(localVolume, 0f, 2f);
             UpdateTooltip();
             RefreshHeldItemTooltip();
         }
 
-        public void ServerHandleSetVolume( float volume)
+        public void ServerHandleSetVolume(float volume)
         {
             if (Plugin.LocalVolumeOnly.Value)
             {
@@ -355,6 +341,7 @@ namespace BoomBoxOverhaul
             if (Boombox != null && Boombox.NetworkObject != null)
             {
                 Plugin.Log("Sending shared volume: " + clamped);
+                BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
             }
         }
 
@@ -377,30 +364,27 @@ namespace BoomBoxOverhaul
                     return;
                 }
 
-
-
-
                 switch (Plugin.UseAudioMode())
                 {
                     case AudioModeType.Realistic:
                         Audio.spatialBlend = 1f;
-                        Audio.rolloffMode = AudioRolloffMode.Logarithmic;
-                        Audio.minDistance = 1.5f;
-                        Audio.maxDistance = 35f;
+                        Audio.rolloffMode = AudioRolloffMode.Linear;
+                        Audio.minDistance = 2f;
+                        Audio.maxDistance = 12f;
                         break;
 
                     case AudioModeType.PureMusic:
-                        Audio.spatialBlend = 0.2f;
-                        Audio.rolloffMode = AudioRolloffMode.Logarithmic;
+                        Audio.spatialBlend = 0.65f;
+                        Audio.rolloffMode = AudioRolloffMode.Linear;
                         Audio.minDistance = 3f;
-                        Audio.maxDistance = 60f;
+                        Audio.maxDistance = 16f;
                         break;
 
                     default:  //Default is balanced "Because it just works" - Todd howard
-                        Audio.spatialBlend = 0.6f;
-                        Audio.rolloffMode = AudioRolloffMode.Logarithmic;
-                        Audio.minDistance = 2f;
-                        Audio.maxDistance = 50f;
+                        Audio.spatialBlend = 0.85f;
+                        Audio.rolloffMode = AudioRolloffMode.Linear;
+                        Audio.minDistance = 2.5f;
+                        Audio.maxDistance = 14f;
                         break;
                 }
 
@@ -551,29 +535,16 @@ namespace BoomBoxOverhaul
         public void RefreshWeightSettingsFromSync()
         {
             ApplyWeightSettings();
-        }
-
-
-
-        private string GetScrollingTrackText()
+        }   
+     private string GetScrollingTrackText()
         {
-            string title = "None";
-
-            if (Audio != null && Audio.clip != null && !string.IsNullOrEmpty(Audio.clip.name))
-            {
-                title = Audio.clip.name;
-            }
-            else if (!string.IsNullOrEmpty(currentVideoId))
-            {
-                title = currentVideoId;
-            }
-
+            string title = currentTrackTitle;
             if (string.IsNullOrEmpty(title))
             {
                 return "None";
             }
 
-            const int visibleLength = 28;
+            const int visibleLength = 24;
 
             if (title.Length <= visibleLength)
             {
@@ -590,7 +561,6 @@ namespace BoomBoxOverhaul
 
             return scrolling.Substring(tooltipScrollIndex, visibleLength);
         }
-
         private void UpdateTooltip()
         {
             if (Boombox == null || Boombox.itemProperties == null)
@@ -605,8 +575,6 @@ namespace BoomBoxOverhaul
                 "[" + Plugin.OpenUiKey.Value + "] URL Menu",
                 "[" + Plugin.VolumeDownKey.Value + "/" + Plugin.VolumeUpKey.Value + "] Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%",
                 "Track: " + scrollingTitle,
-                "State: " + statusText,
-                "Audio: " + Plugin.UseAudioMode()
             };
         }
 
@@ -768,6 +736,7 @@ namespace BoomBoxOverhaul
             isPreparing = false;
         }
 
+        private string currentTrackTitle = "None";
         public void ClientPrepareTrack(string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
         {
             Plugin.Log("ClientPrepareTrack START → " + videoId);
@@ -777,6 +746,7 @@ namespace BoomBoxOverhaul
             playlist.VideoIds.AddRange(playlistIds);
             playlist.Index = playlistIndex;
             statusText = "Preparing...";
+            currentTrackTitle = "Loading...";
             isPreparing = true;
             isPlayingCustom = false;
             tooltipScrollIndex = 0;
@@ -840,7 +810,8 @@ namespace BoomBoxOverhaul
                 }
 
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-                clip.name = string.IsNullOrEmpty(info.title) ? videoId : info.title;
+                currentTrackTitle = string.IsNullOrEmpty(info.title) ? "Unknown Title" : CleanTrackTitle(info.title);
+                clip.name = currentTrackTitle;
 
                 if (Audio.clip != null && Audio.clip != clip)
                 {
@@ -867,7 +838,41 @@ namespace BoomBoxOverhaul
                 }
             }
         }
+        //I actually made reference notes for this
+        private string CleanTrackTitle(string title)
+        {
+            if (string.IsNullOrEmpty(title))
+            {
+                return "None";
+            }
+            string cleaned = title.Trim();
+            //I hate regex but also love it 
+            cleaned = Regex.Replace(cleaned, @"\[[^\]]*\]|\([^\)]*\)", ""); // [] + () content cleanup
+            cleaned = Regex.Replace(cleaned, @"\s*-\s*YouTube$", "", RegexOptions.IgnoreCase); // Trailing youtbe suffix cleanup (maybe)
+            cleaned = Regex.Replace(cleaned, @"\bVEVO\b", "", RegexOptions.IgnoreCase); // Good for old songs (VEVO cleanup)
+            cleaned = Regex.Replace(cleaned, @"\bTopic\b", "", RegexOptions.IgnoreCase);
 
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();// Collapse whitespace for artist and title 
+
+            Match dashMatch = Regex.Match(cleaned, @"^\s*[^-]+?\s+-\s+(.+)$");// For ${artist} ${songname} style titles will only keep content after first dash (seems to be the common way of formatting youtube titles with artist first, keep a look at this one)
+            if (dashMatch.Success)
+            {
+                cleaned = dashMatch.Groups[1].Value.Trim();
+            }
+
+            cleaned = Regex.Replace(cleaned, @"^[\-\-\-:\|\s]+", "");// Remove leftover leading seperators 
+            cleaned = Regex.Replace(cleaned, @"[\-\-\-:\|\s]+$", "");// Remove leftover trailing sperators
+
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();// Collapse whitespace again
+
+            if (string.IsNullOrEmpty (cleaned))
+            {
+                return "Unknown Title";
+            }
+
+            return cleaned;
+                
+        }
         public void ServerNotifyReady(ulong clientId, bool success)
         {
             if (success)
@@ -944,9 +949,13 @@ namespace BoomBoxOverhaul
             if (Audio != null && Audio.clip != null)
             {
                 suppressVanillaStopOnce = true;
-                StopVanillaBoomboxAudio();
+                StopVanillaBoomboxAudio();           
                 Audio.Stop();
                 Audio.time = 0f;
+
+                ApplyAudioModeSettings();
+                ApplyLocalVolume();
+
                 Audio.Play();
             }
             else
@@ -972,6 +981,7 @@ namespace BoomBoxOverhaul
             isPreparing = false;
             isPlayingCustom = false;
             statusText = "Stopped";
+            currentTrackTitle = "None";
 
             if (localLoadRoutine != null)
             {
