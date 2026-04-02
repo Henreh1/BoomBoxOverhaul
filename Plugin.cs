@@ -1,6 +1,7 @@
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
+using System.ComponentModel.Design;
 using System.IO;
 using UnityEngine;
 
@@ -10,7 +11,7 @@ namespace BoomBoxOverhaul
     {
         Realistic,
         Balanced,
-        PureMusic
+        PureMusic,
     }
 
     [BepInPlugin(ModGuid, ModName, ModVersion)]
@@ -62,7 +63,7 @@ namespace BoomBoxOverhaul
             WeightlessBoombox = Config.Bind("Gameplay", "WeightlessBoombox", true, "When set to true the boombox is as light as a feather!");
             KeepPlayingPocketed = Config.Bind("Gameplay", "KeepPlayingPocketed", true, "Boombox keeps playing when pocketed.");
             VolumeStep = Config.Bind("Audio", "VolumeStep", 0.1f, "Volume increment/decrement amount.");
-            DefaultVolume = Config.Bind("Audio", "DefaultVolume", 1.0f, "Default local boombox volume.");
+            DefaultVolume = Config.Bind("Audio", "DefaultVolume", 1.0f, "Default boombox volume.");
             OpenUiKey = Config.Bind("Input", "OpenUiKey", KeyCode.B, "Open URL input UI.");
             VolumeUpKey = Config.Bind("Input", "VolumeUpKey", KeyCode.Equals, "Increase boombox volume.");
             VolumeDownKey = Config.Bind("Input", "VolumeDownKey", KeyCode.Minus, "Decrease boombox volume.");
@@ -145,6 +146,11 @@ namespace BoomBoxOverhaul
             {
                 Instance.Logger.LogInfo(msg);
             }
+            else
+            {
+                BepInEx.Logging.Logger.CreateLogSource("BoomBoxOverhaul")
+                    .LogInfo(msg);
+            }
         }
 
         internal static void Warn(string msg)
@@ -153,6 +159,11 @@ namespace BoomBoxOverhaul
             {
                 Instance.Logger.LogWarning(msg);
             }
+            else
+            {
+                BepInEx.Logging.Logger.CreateLogSource("BoomBoxOverhaul")
+                    .LogWarning(msg);
+            }
         }
 
         internal static void Error(string msg)
@@ -160,6 +171,11 @@ namespace BoomBoxOverhaul
             if (Instance != null)
             {
                 Instance.Logger.LogError(msg);
+            }
+            else
+            {
+                BepInEx.Logging.Logger.CreateLogSource("BoomBoxOverhaul")
+                    .LogError(msg);
             }
         }
     }
