@@ -45,6 +45,7 @@ namespace BoomBoxOverhaul
         internal static ConfigEntry<bool> AutoDownloadFfmpeg;
         internal static ConfigEntry<string> FfmpegZipUrl;
         internal static ConfigEntry<bool> SearchPathForTools;
+        internal static ConfigEntry<bool> DbgLogs;
 
         internal static bool SyncedLocalVolumeOnly = true;
         internal static bool HasSyncedVolumeMode = false;
@@ -85,6 +86,7 @@ namespace BoomBoxOverhaul
             AutoDownloadFfmpeg = Config.Bind("Dependencies", "AutoDownloadFfmpeg", true, "Automatically download ffmpeg if it is missing.");
             FfmpegZipUrl = Config.Bind("Dependencies", "FfmpegZipUrl", "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip", "FFmpeg ZIP URL.");
             SearchPathForTools = Config.Bind("Dependencies", "SearchPathForTools", true, "Search PATH for yt-dlp and ffmpeg.");
+            DbgLogs = Config.Bind("Debug", "DbgLogs", false, "Enable debug logs.");
 
             PluginFolder = Path.GetDirectoryName(Info.Location) ?? Paths.PluginPath;
             ToolsFolder = Path.Combine(PluginFolder, "tools");
@@ -140,6 +142,16 @@ namespace BoomBoxOverhaul
             return AudioMode.Value;
         }
 
+        //Debug logs
+
+        internal static void DbgLog(string msg)
+        {
+            if (DbgLogs != null && DbgLogs.Value)
+            {
+                Log("[DBG] " + msg);
+            }
+        }
+        //End of debug logs
         internal static void Log(string msg)
         {
             if (Instance != null)
@@ -165,7 +177,6 @@ namespace BoomBoxOverhaul
                     .LogWarning(msg);
             }
         }
-
         internal static void Error(string msg)
         {
             if (Instance != null)

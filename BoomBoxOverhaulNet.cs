@@ -190,7 +190,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgRequestPlay, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent play request for object " + networkObjectId);
+            Plugin.DbgLog("Sent play request for object " + networkObjectId);
         }
 
         public static void BroadcastPrepareTrack(ulong networkObjectId, string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
@@ -223,7 +223,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast prepare track for object " + networkObjectId);
+            Plugin.DbgLog("Broadcast prepare track for object " + networkObjectId);
         }
 
         public static void SendNotifyReady(ulong networkObjectId, bool success)
@@ -241,7 +241,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgNotifyReady, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent ready state " + success + " for object " + networkObjectId);
+            Plugin.DbgLog("Sent ready state " + success + " for object " + networkObjectId);
         }
 
         public static void BroadcastBeginPlaybackReadyOnly(ulong networkObjectId, string videoId, HashSet<ulong> readyClientIds)
@@ -262,7 +262,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast begin playback to ready clients only: " + readyClientIds.Count);
+            Plugin.DbgLog("Broadcast begin playback to ready clients only: " + readyClientIds.Count);
         }
 
         public static void SendRequestStop(ulong networkObjectId)
@@ -279,7 +279,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgRequestStop, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent stop request for object " + networkObjectId);
+            Plugin.DbgLog("Sent stop request for object " + networkObjectId);
         }
 
         public static void BroadcastStopPlayback(ulong networkObjectId)
@@ -301,7 +301,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast stop playback for object " + networkObjectId);
+            Plugin.DbgLog("Broadcast stop playback for object " + networkObjectId);
         }
 
         public static void SendRejectPlay(ulong targetClientId, ulong networkObjectId, string reason)
@@ -380,7 +380,7 @@ namespace BoomBoxOverhaul
 
         private static void OnRequestPlay(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnRequestPlay received from client " + senderClientId);
+            Plugin.DbgLog("OnRequestPlay received from client " + senderClientId);
 
             ulong networkObjectId;
             string url;
@@ -401,7 +401,7 @@ namespace BoomBoxOverhaul
 
         private static void OnPrepareTrack(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnPrepareTrack received");
+            Plugin.DbgLog("OnPrepareTrack received");
 
             ulong networkObjectId;
             string canonicalUrl;
@@ -441,7 +441,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out success);
 
-            Plugin.Log("OnNotifyReady received from " + senderClientId + " success=" + success);
+            Plugin.DbgLog("OnNotifyReady received from " + senderClientId + " success=" + success);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)
@@ -456,7 +456,7 @@ namespace BoomBoxOverhaul
 
         private static void OnBeginPlayback(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnBeginPlayback received");
+            Plugin.DbgLog("OnBeginPlayback received");
 
             ulong networkObjectId;
             string videoId;
@@ -530,7 +530,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out volume);
 
-            Plugin.Log("OnSetVolume received from " + senderClientId + " volume=" + volume);
+            Plugin.DbgLog("OnSetVolume received from " + senderClientId + " volume=" + volume);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)
@@ -551,7 +551,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out volume);
 
-            Plugin.Log("OnApplyVolume received volume=" + volume);
+            Plugin.DbgLog("OnApplyVolume received volume=" + volume);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)

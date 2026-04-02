@@ -129,7 +129,7 @@ namespace BoomBoxOverhaul
                 }
 
                 SetCameraLocked(uiOpen);
-                Plugin.Log("Toggled boombox UI: " + (uiOpen ? "Open" : "Closed"));
+                Plugin.DbgLog("Toggled boombox UI: " + (uiOpen ? "Open" : "Closed"));
             }
 
             if (IsConfiguredKeyPressed(Plugin.VolumeUpKey.Value) && IsRelevantToLocalPlayer())
@@ -140,7 +140,7 @@ namespace BoomBoxOverhaul
                 if (Plugin.UseLocalVolumeOnly())
                 {
                     ApplyLocalVolume();
-                    Plugin.Log("Applied local-only volume up: " + localVolume);
+                    Plugin.DbgLog("Applied local-only volume up: " + localVolume);
                 }
                 else
                 {
@@ -165,13 +165,13 @@ namespace BoomBoxOverhaul
                 if (Plugin.UseLocalVolumeOnly())
                 {
                     ApplyLocalVolume();
-                    Plugin.Log("Applied local-only volume down: " + localVolume);
+                    Plugin.DbgLog("Applied local-only volume down: " + localVolume);
                 }
                 else
                 {
                     if (Boombox != null && Boombox.NetworkObject != null)
                     {
-                        Plugin.Log("Sending server volume: " + localVolume);
+                        Plugin.DbgLog("Sending server volume: " + localVolume);
                         BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, localVolume);
                     }
                     else
@@ -277,7 +277,7 @@ namespace BoomBoxOverhaul
 
             if (GUI.Button(new Rect(35, 173, 80, 20), "Play"))
             {
-                Plugin.Log("Play button pressed.");
+                Plugin.DbgLog("Play button pressed.");
 
                 if (string.IsNullOrEmpty(pendingUrl))
                 {
@@ -293,7 +293,7 @@ namespace BoomBoxOverhaul
                 }
                 else
                 {
-                    Plugin.Log("Sending play request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId + " URL=" + pendingUrl.Trim());
+                    Plugin.DbgLog("Sending play request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId + " URL=" + pendingUrl.Trim());
                     BoomBoxOverhaulNet.SendRequestPlay(Boombox.NetworkObject.NetworkObjectId, pendingUrl.Trim());
                 }
             }
@@ -302,11 +302,11 @@ namespace BoomBoxOverhaul
 
             if (GUI.Button(new Rect(125, 173, 80, 20), "Stop"))
             {
-                Plugin.Log("Stop button pressed.");
+                Plugin.DbgLog("Stop button pressed.");
 
                 if (Boombox != null && Boombox.NetworkObject != null)
                 {
-                    Plugin.Log("Sending stop request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId);
+                    Plugin.DbgLog("Sending stop request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId);
                     BoomBoxOverhaulNet.SendRequestStop(Boombox.NetworkObject.NetworkObjectId);
                 }
                 else
@@ -340,14 +340,14 @@ namespace BoomBoxOverhaul
 
             if (Boombox != null && Boombox.NetworkObject != null)
             {
-                Plugin.Log("Sending shared volume: " + clamped);
+                Plugin.DbgLog("Sending shared volume: " + clamped);
                 BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
             }
         }
 
         public void ClientApplyNetworkVolume(float volume)
         {
-            Plugin.Log("ClientApplyNetworkVolume > " + volume);
+            Plugin.DbgLog("ClientApplyNetworkVolume > " + volume);
             localVolume = Mathf.Clamp(volume, 0f, 2f);
             ApplyLocalVolume();
         }
@@ -636,7 +636,7 @@ namespace BoomBoxOverhaul
 
         public void ServerHandlePlay(ulong requesterClientId, string url)
         {
-            Plugin.Log("ServerHandlePlay called from client " + requesterClientId + " URL=" + url);
+            Plugin.DbgLog("ServerHandlePlay called from client " + requesterClientId + " URL=" + url);
 
             if (!DependencyBootstrapper.GetState().IsReady())
             {
@@ -718,7 +718,7 @@ namespace BoomBoxOverhaul
             PopulateExpectedClients();
 
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            Plugin.Log("Broadcasting prepare track for " + currentVideoId);
+            Plugin.DbgLog("Broadcasting prepare track for " + currentVideoId);
             BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
@@ -739,7 +739,7 @@ namespace BoomBoxOverhaul
         private string currentTrackTitle = "None";
         public void ClientPrepareTrack(string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
         {
-            Plugin.Log("ClientPrepareTrack START → " + videoId);
+            Plugin.DbgLog("ClientPrepareTrack START → " + videoId);
 
             currentVideoId = videoId;
             playlist.VideoIds.Clear();
@@ -767,7 +767,7 @@ namespace BoomBoxOverhaul
             bool fetchOk = false;
             TrackInfo info = new TrackInfo();
 
-            Plugin.Log("Preparing local track download for: " + videoId);
+            Plugin.DbgLog("Preparing local track download for: " + videoId);
             Plugin.Log("Downloading track: " + videoId);
 
             yield return RunBlockingTask(delegate
@@ -787,7 +787,7 @@ namespace BoomBoxOverhaul
                 yield break;
             }
 
-            Plugin.Log("Download COMPLETE: " + videoId);
+            Plugin.DbgLog("Download COMPLETE: " + videoId);
             Plugin.Log("Local track download complete for: " + videoId);
 
             statusText = "Loading clip...";
@@ -829,7 +829,7 @@ namespace BoomBoxOverhaul
                 tooltipScrollTimer = 0f;
                 ApplyLocalVolume();
                 statusText = "Ready: " + clip.name;
-                Plugin.Log("Clip READY: " + videoId);
+                Plugin.DbgLog("Clip READY: " + videoId);
                 Plugin.Log("Local clip ready for: " + videoId);
 
                 if (Boombox != null && Boombox.NetworkObject != null)
@@ -966,7 +966,7 @@ namespace BoomBoxOverhaul
 
         public void ServerHandleStop()
         {
-            Plugin.Log("ServerHandleStop called");
+            Plugin.DbgLog("ServerHandleStop called");
 
             if (Boombox != null && Boombox.NetworkObject != null)
             {
@@ -976,7 +976,7 @@ namespace BoomBoxOverhaul
 
         public void ClientStopPlayback()
         {
-            Plugin.Log("ClientStopPlayback called");
+            Plugin.DbgLog("ClientStopPlayback called");
 
             isPreparing = false;
             isPlayingCustom = false;
@@ -1036,7 +1036,7 @@ namespace BoomBoxOverhaul
             PopulateExpectedClients();
 
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            Plugin.Log("Broadcasting next prepare track for " + currentVideoId);
+            Plugin.DbgLog("Broadcasting next prepare track for " + currentVideoId);
             BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
