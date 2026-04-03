@@ -42,7 +42,10 @@ namespace BoomBoxOverhaul
 
         private AudioClip basePlaybackClip;
         private AudioClip boostedPlaybackClip;
-        private float lastAppliedClipGain = 1f;
+        private float lastBuiltBoostGain = -1f;
+
+        private float presetMinDistance = 2f;
+        private float presetMaxDistance = 14f;
 
 
         private void Awake()
@@ -73,7 +76,6 @@ namespace BoomBoxOverhaul
 
             Audio.playOnAwake = false;
             Audio.loop = false;
-            Audio.dopplerLevel = 0f;
             ApplyAudioModeSettings();
 
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
@@ -151,7 +153,7 @@ namespace BoomBoxOverhaul
                 {
                     if (Boombox != null && Boombox.NetworkObject != null)
                     {
-                        Plugin.Warn("Sending server volume: " + localVolume);
+                        Plugin.DbgLog("Sending server volume: " + localVolume);
                         BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, localVolume);
                     }
                     else
@@ -328,16 +330,12 @@ namespace BoomBoxOverhaul
                 return;
             }
 
-            RebuildPlaybackClipForVolume();
+            float clmaped = Mathf.Clamp(localVolume, 0f, 2f);
 
-            if (localVolume <= 1f)
-            {
-                Audio.volume = Mathf.Clamp(localVolume, 0f, 1f);
-            }
-            else
-            {
-                Audio.volume = 1f;
-            }
+            //above 100 percent clip boosted shoulkd be handled on track load to optimise performance
+            Audio.volume = Mathf.Clamp01(clmaped);
+
+            ApplyDistanceSettingsForCurrentVolume();
 
             UpdateTooltip();
             RefreshHeldItemTooltip();
@@ -379,65 +377,88 @@ namespace BoomBoxOverhaul
             }
 
             float gain = Mathf.Clamp(localVolume, 0f, 2f);
-            if (Mathf.Abs(lastAppliedClipGain - gain) < 0.01f && Audio.clip != null)
-            {
-                return; //Skip rebuild when gain change is small
-            }
+            float effectiveGain = gain <= 1f ? gain : 1f + ((gain - 1f) * 4f); // Simple linear boost curve, may make it better if too aggressive
 
-            lastAppliedClipGain = gain;
-
-            if (boostedPlaybackClip != null)
-            {
-                try { Destroy(boostedPlaybackClip);  } catch { }
-                boostedPlaybackClip = null;
-            }
-            
-            //Normal volume 0-100 duh
+            ClearBoostedClip();
 
             if (gain <= 1f)
             {
                 Audio.clip = basePlaybackClip;
-                Audio.volume = gain;
+                lastBuiltBoostGain = gain;
                 return;
             }
 
-            //Louder audio 100-200 duh
-
-            Audio.volume = 1f;
             int sampleCount = basePlaybackClip.samples * basePlaybackClip.channels;
             float[] data = new float[sampleCount];
             basePlaybackClip.GetData(data, 0);
 
-            for (int i = 0; i < data.Length; i++)
+            int i;
+            for (i = 0; i < data.Length; i++)
             {
-                float boosted = data[i] * gain;
+                float sample = data[i] * effectiveGain;
 
-                if (boosted > 1f) boosted = 1f;
-                if (boosted < -1f) boosted = -1f;
+                if (sample > 1f)
+                {
+                    sample = 1f;
+                }
+                else if (sample < -1f)
+                {
+                    sample = -1f;
+                }
 
-                data[i] = boosted;
+                data[i] = sample;
             }
 
             boostedPlaybackClip = AudioClip.Create(
-                basePlaybackClip.name + "_gain" + gain.ToString("0.00"),
+                basePlaybackClip.name + "_boosted",
                 basePlaybackClip.samples,
                 basePlaybackClip.channels,
                 basePlaybackClip.frequency,
                 false
-            );
+                );
+
+            boostedPlaybackClip.SetData(data, 0);
+            Audio.clip = boostedPlaybackClip;
+            lastBuiltBoostGain = gain;
+
         }
+           //End of boosted audio stuff
 
         private void ClearBoostedClip()
         {
-            lastAppliedClipGain = 1f;
+            lastBuiltBoostGain = -1f;
+
             if (boostedPlaybackClip != null)
             {
-                try { Destroy(boostedPlaybackClip); } catch { }
+                try
+                {
+                    Destroy(boostedPlaybackClip);
+                }
+                catch
+                {
+                }
                 boostedPlaybackClip = null;
             }
         }
 
         //End of audio boost gain etc
+
+        ////////////////////////////////////////
+        /// Distance Volume settings thingies///
+        ////////////////////////////////////////
+        
+        private void ApplyDistanceSettingsForCurrentVolume()
+        {
+            if (Audio == null)
+            {
+                return;
+            }
+
+            float t = Mathf.Clamp01(localVolume);
+
+            Audio.minDistance = Mathf.Lerp(1.5f, presetMinDistance, t);
+            Audio.maxDistance = Mathf.Lerp(6f, presetMaxDistance, t);
+        }
 
         ///////////////////////////
         //Audio mode (experiment)//
@@ -450,6 +471,11 @@ namespace BoomBoxOverhaul
                 {
                     return;
                 }
+
+                Audio.dopplerLevel = 0f;
+                Audio.spread = 0f;
+                Audio.reverbZoneMix = 0f;
+                Audio.spatialize = false;
 
                 switch (Plugin.UseAudioMode())
                 {
@@ -474,6 +500,8 @@ namespace BoomBoxOverhaul
                         Audio.maxDistance = 14f;
                         break;
                 }
+
+                ApplyDistanceSettingsForCurrentVolume();
 
                 Plugin.Log("Applied Audio Preset: " + Plugin.UseAudioMode());
                 UpdateTooltip();
@@ -897,25 +925,16 @@ namespace BoomBoxOverhaul
                 }
 
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-                basePlaybackClip = clip;
-                lastAppliedClipGain = 1f;
+                
                 currentTrackTitle = string.IsNullOrEmpty(info.title) ? "Unknown Title" : CleanTrackTitle(info.title);
-                clip.name = currentTrackTitle;
-
-                if (Audio.clip != null && Audio.clip != clip)
-                {
-                    try
-                    {
-                        Destroy(Audio.clip);
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                Audio.clip = basePlaybackClip;
                 tooltipScrollIndex = 0;
                 tooltipScrollTimer = 0f;
+                clip.name = currentTrackTitle;
+
+                ClearBoostedClip();
+                basePlaybackClip = clip;
+                Audio.clip = basePlaybackClip;
+
                 ApplyLocalVolume();
                 statusText = "Ready: " + clip.name;
                 Plugin.DbgLog("Clip READY: " + videoId);
@@ -1035,14 +1054,15 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
-            if (Audio != null && Audio.clip != null)
+           if (Audio != null && basePlaybackClip != null)
             {
                 suppressVanillaStopOnce = true;
-                StopVanillaBoomboxAudio();           
+                StopVanillaBoomboxAudio();
                 Audio.Stop();
                 Audio.time = 0f;
 
                 ApplyAudioModeSettings();
+                RebuildPlaybackClipForVolume();
                 ApplyLocalVolume();
 
                 Audio.Play();
@@ -1072,7 +1092,7 @@ namespace BoomBoxOverhaul
             statusText = "Stopped";
             currentTrackTitle = "None";
             basePlaybackClip = null;
-            lastAppliedClipGain = 1f;
+            lastBuiltBoostGain = 1f;
 
             if (boostedPlaybackClip != null)
             {
@@ -1090,6 +1110,9 @@ namespace BoomBoxOverhaul
             {
                 Audio.Stop();
             }
+
+            ClearBoostedClip();
+            basePlaybackClip = null;
         }
 
         private void OnTrackEndedLocal()
