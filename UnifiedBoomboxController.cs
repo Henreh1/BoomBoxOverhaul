@@ -40,6 +40,11 @@ namespace BoomBoxOverhaul
         private float tooltipScrollTimer = 0f;
         private int tooltipScrollIndex = 0;
 
+        private AudioClip basePlaybackClip;
+        private AudioClip boostedPlaybackClip;
+        private float lastAppliedClipGain = 1f;
+
+
         private void Awake()
         {
             Plugin.Log("UnifiedBoomboxController attached to boombox.");
@@ -323,7 +328,17 @@ namespace BoomBoxOverhaul
                 return;
             }
 
-            Audio.volume = Mathf.Clamp(localVolume, 0f, 2f);
+            RebuildPlaybackClipForVolume();
+
+            if (localVolume <= 1f)
+            {
+                Audio.volume = Mathf.Clamp(localVolume, 0f, 1f);
+            }
+            else
+            {
+                Audio.volume = 1f;
+            }
+
             UpdateTooltip();
             RefreshHeldItemTooltip();
         }
@@ -351,6 +366,78 @@ namespace BoomBoxOverhaul
             localVolume = Mathf.Clamp(volume, 0f, 2f);
             ApplyLocalVolume();
         }
+
+        //////////////////////////////////////////////////// 
+        ///Clip rebuild for boosted volume (experimental)///
+        ////////////////////////////////////////////////////
+
+        private void RebuildPlaybackClipForVolume()
+        {
+            if (Audio == null || basePlaybackClip == null)
+            {
+                return;
+            }
+
+            float gain = Mathf.Clamp(localVolume, 0f, 2f);
+            if (Mathf.Abs(lastAppliedClipGain - gain) < 0.01f && Audio.clip != null)
+            {
+                return; //Skip rebuild when gain change is small
+            }
+
+            lastAppliedClipGain = gain;
+
+            if (boostedPlaybackClip != null)
+            {
+                try { Destroy(boostedPlaybackClip);  } catch { }
+                boostedPlaybackClip = null;
+            }
+            
+            //Normal volume 0-100 duh
+
+            if (gain <= 1f)
+            {
+                Audio.clip = basePlaybackClip;
+                Audio.volume = gain;
+                return;
+            }
+
+            //Louder audio 100-200 duh
+
+            Audio.volume = 1f;
+            int sampleCount = basePlaybackClip.samples * basePlaybackClip.channels;
+            float[] data = new float[sampleCount];
+            basePlaybackClip.GetData(data, 0);
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                float boosted = data[i] * gain;
+
+                if (boosted > 1f) boosted = 1f;
+                if (boosted < -1f) boosted = -1f;
+
+                data[i] = boosted;
+            }
+
+            boostedPlaybackClip = AudioClip.Create(
+                basePlaybackClip.name + "_gain" + gain.ToString("0.00"),
+                basePlaybackClip.samples,
+                basePlaybackClip.channels,
+                basePlaybackClip.frequency,
+                false
+            );
+        }
+
+        private void ClearBoostedClip()
+        {
+            lastAppliedClipGain = 1f;
+            if (boostedPlaybackClip != null)
+            {
+                try { Destroy(boostedPlaybackClip); } catch { }
+                boostedPlaybackClip = null;
+            }
+        }
+
+        //End of audio boost gain etc
 
         ///////////////////////////
         //Audio mode (experiment)//
@@ -810,6 +897,8 @@ namespace BoomBoxOverhaul
                 }
 
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
+                basePlaybackClip = clip;
+                lastAppliedClipGain = 1f;
                 currentTrackTitle = string.IsNullOrEmpty(info.title) ? "Unknown Title" : CleanTrackTitle(info.title);
                 clip.name = currentTrackTitle;
 
@@ -824,7 +913,7 @@ namespace BoomBoxOverhaul
                     }
                 }
 
-                Audio.clip = clip;
+                Audio.clip = basePlaybackClip;
                 tooltipScrollIndex = 0;
                 tooltipScrollTimer = 0f;
                 ApplyLocalVolume();
@@ -982,6 +1071,14 @@ namespace BoomBoxOverhaul
             isPlayingCustom = false;
             statusText = "Stopped";
             currentTrackTitle = "None";
+            basePlaybackClip = null;
+            lastAppliedClipGain = 1f;
+
+            if (boostedPlaybackClip != null)
+            {
+                try { Destroy(boostedPlaybackClip); } catch { }
+                boostedPlaybackClip = null;
+            }
 
             if (localLoadRoutine != null)
             {
