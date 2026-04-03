@@ -50,7 +50,7 @@ namespace BoomBoxOverhaul
 
         private void Awake()
         {
-            Plugin.Log("UnifiedBoomboxController attached to boombox.");
+            Plugin.Log("Your boombox has been upgraded!");
 
             Boombox = GetComponent<BoomboxItem>();
             ApplyWeightSettings();
