@@ -74,6 +74,10 @@ namespace BoomBoxOverhaul
                 Audio.name = "BoomBoxOverhaulAudio";
             }
 
+            Audio.bypassEffects = false;
+            Audio.bypassListenerEffects = false;
+            Audio.bypassReverbZones = false;
+
             Audio.playOnAwake = false;
             Audio.loop = false;
             ApplyAudioModeSettings();
@@ -456,8 +460,8 @@ namespace BoomBoxOverhaul
 
             float t = Mathf.Clamp01(localVolume);
 
-            Audio.minDistance = Mathf.Lerp(1.5f, presetMinDistance, t);
-            Audio.maxDistance = Mathf.Lerp(6f, presetMaxDistance, t);
+            Audio.minDistance = Mathf.Lerp(1f, presetMinDistance, t);
+            Audio.maxDistance = Mathf.Lerp(4f, presetMaxDistance, t);
         }
 
         ///////////////////////////
@@ -476,28 +480,25 @@ namespace BoomBoxOverhaul
                 Audio.spread = 0f;
                 Audio.reverbZoneMix = 0f;
                 Audio.spatialize = false;
+                Audio.reverbZoneMix = 0f;
+                Audio.spatialBlend = 1f;
+                Audio.rolloffMode = AudioRolloffMode.Linear;
 
                 switch (Plugin.UseAudioMode())
                 {
                     case AudioModeType.Realistic:
-                        Audio.spatialBlend = 1f;
-                        Audio.rolloffMode = AudioRolloffMode.Linear;
-                        Audio.minDistance = 2f;
-                        Audio.maxDistance = 12f;
+                        presetMinDistance = 1.5f;
+                        presetMaxDistance = 10f;
                         break;
 
                     case AudioModeType.PureMusic:
-                        Audio.spatialBlend = 0.65f;
-                        Audio.rolloffMode = AudioRolloffMode.Linear;
-                        Audio.minDistance = 3f;
-                        Audio.maxDistance = 16f;
+                        presetMinDistance = 2.5f;
+                        presetMaxDistance = 12f;
                         break;
 
                     default:  //Default is balanced "Because it just works" - Todd howard
-                        Audio.spatialBlend = 0.85f;
-                        Audio.rolloffMode = AudioRolloffMode.Linear;
-                        Audio.minDistance = 2.5f;
-                        Audio.maxDistance = 14f;
+                        presetMinDistance = 2f;
+                        presetMaxDistance = 11f;
                         break;
                 }
 
@@ -576,6 +577,9 @@ namespace BoomBoxOverhaul
                 if (Boombox.boomboxAudio != null && Boombox.boomboxAudio != Audio)
                 {
                     Boombox.boomboxAudio.Stop();
+                    Boombox.boomboxAudio.volume = 0f;
+                    Boombox.boomboxAudio.spatialBlend = 1f;
+                    Boombox.boomboxAudio.maxDistance = 0f;
                 }
 
                 Boombox.isPlayingMusic = false;
