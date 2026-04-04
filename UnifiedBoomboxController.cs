@@ -512,6 +512,37 @@ namespace BoomBoxOverhaul
                 Plugin.Warn("Failed to apply Audio Preset: " + ex);
             }
         }
+
+        //Mod mismatch stuff
+
+        private bool HasModMismatch(out string missingList)
+        {
+            missingList = "";
+
+
+            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer || NetworkManager.Singleton.ConnectedClients == null)
+            {
+                return false;
+            }
+
+            List<string> missing = new List<string>();
+            foreach (KeyValuePair<ulong, NetworkClient> kvp in NetworkManager.Singleton.ConnectedClients)
+            {
+                if (!BoomBoxOverhaulNet.IsClientKnownModded(kvp.Key))
+                {
+                    missing.Add(BoomBoxOverhaulNet.GetClientDisplayName(kvp.Key));
+                }
+            }
+
+            if (missing.Count == 0)
+            {
+                return false;
+            }
+
+            missingList = string.Join(", ", missing.ToArray());
+            return true;
+
+        }
         private void RefreshHeldItemTooltip()
         {
             try
@@ -636,7 +667,7 @@ namespace BoomBoxOverhaul
                     return;
                 }
 
-                if (Plugin.WeightlessBoombox.Value)
+                if (Plugin.UseWeightlessBoombox())
                 {
                     Boombox.itemProperties.weight = 1f;
                     Plugin.Log("The boombox is as light as a feather!");
@@ -770,6 +801,22 @@ namespace BoomBoxOverhaul
                 {
                     BoomBoxOverhaulNet.SendRejectPlay(requesterClientId, Boombox.NetworkObject.NetworkObjectId, "Invalid URL");
                 }
+                return;
+            }
+
+            string missingList;
+            if (HasModMismatch(out missingList))
+            {
+                if (Boombox != null && Boombox.NetworkObject != null)
+                {
+                    BoomBoxOverhaulNet.SendRejectPlay(
+                        requesterClientId,
+                        Boombox.NetworkObject.NetworkObjectId,
+                        "BoomBoxOverhaul mod mismatch for the following: " + missingList + ". All players need the mod to play music, sorry!" //Duh obviously
+                        );
+                }
+
+                Plugin.Warn("Blocked Playback due to mod mismatch for: " + missingList);
                 return;
             }
 
@@ -1204,7 +1251,7 @@ namespace BoomBoxOverhaul
 
         public bool ShouldSuppressVanillaStop()
         {
-            if (!Plugin.KeepPlayingPocketed.Value)
+            if (!Plugin.UseKeepPlayingPocketed())
             {
                 return false;
             }

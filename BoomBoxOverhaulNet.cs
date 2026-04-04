@@ -1,3 +1,4 @@
+using GameNetcodeStuff;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,11 +20,15 @@ namespace BoomBoxOverhaul
         private const string MsgSetVolume = "BoomBoxOverhaul_SetVolume";
         private const string MsgApplyVolume = "BoomBoxOverhaul_ApplyVolume";
         private const string MsgSyncSettings = "BoomBoxOverhaul_SyncSettings";
+        private const string MsgModPresent = "BoomBoxOverhaul_ModPresent";
 
         private static MonoBehaviour host;
         private static bool initialized;
         private static bool handlersRegistered;
         private static NetworkManager boundManager;
+        
+        private static HashSet<ulong> knownModdedClients = new HashSet<ulong>();
+        private static bool announcedPresence = false;
 
         public static void Initialize(MonoBehaviour coroutineHost)
         {
@@ -46,14 +51,36 @@ namespace BoomBoxOverhaul
         }
         }
 
-        private static void OnClientListChanged(ulong clientId)
+        private static void OnClientListChanged(ulong clientID)
         {
-            if (boundManager == null || !handlersRegistered || !boundManager.IsServer)
+            if (boundManager == null || !boundManager.IsServer)
             {
                 return;
             }
-            Plugin.Log("Client list changed, broadcasting sync settings. ClientId: " + clientId);
-            BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value, Plugin.WeightlessBoombox.Value);
+
+            MarkHostAsModded();
+
+            ulong[] currentIds = GetConnectedClientIds();
+            HashSet<ulong> currentSet = new HashSet<ulong>(currentIds);
+
+            List<ulong> toRemove = new List<ulong>();
+            foreach (ulong known in knownModdedClients)
+            {
+                if (!currentSet.Contains(known))
+                {
+                    toRemove.Add(known);
+                }
+            }
+
+            int i;
+            for (i = 0; i < toRemove.Count; i++)
+            {
+                knownModdedClients.Remove(toRemove[i]);
+            }
+
+            BroadcastSyncSettings(
+                Plugin.LocalVolumeOnly.Value,
+                Plugin.WeightlessBoombox.Value);
         }
 
         private static bool clientEventsHooked = false;
@@ -96,6 +123,10 @@ namespace BoomBoxOverhaul
                 boundManager = nm;
                 handlersRegistered = false;
                 clientEventsHooked = false;
+                announcedPresence = false;
+                knownModdedClients.Clear();
+                Plugin.HostHasBoomBoxOverhaul = false;
+                Plugin.HasRecievedHostHandshake = false;
 
                 if (!handlersRegistered)
                 {
@@ -108,6 +139,17 @@ namespace BoomBoxOverhaul
             if (!handlersRegistered)
             {
                 RegisterHandlers();
+            }
+
+            if (boundManager != null && handlersRegistered && boundManager.IsServer)
+            {
+                 MarkHostAsModded();
+            }
+
+            if (boundManager != null && handlersRegistered && boundManager.IsClient && !announcedPresence)
+            {
+                SendModPresent();
+                announcedPresence = true;
             }
         }
 
@@ -130,6 +172,7 @@ namespace BoomBoxOverhaul
             mm.RegisterNamedMessageHandler(MsgSetVolume, OnSetVolume);
             mm.RegisterNamedMessageHandler(MsgApplyVolume, OnApplyVolume);
             mm.RegisterNamedMessageHandler(MsgSyncSettings, OnSyncSettings);
+            mm.RegisterNamedMessageHandler(MsgModPresent, OnModPresent);
 
             handlersRegistered = true;
             Plugin.Log("BoomBoxOverhaul network handlers registered.");
@@ -154,11 +197,92 @@ namespace BoomBoxOverhaul
             mm.UnregisterNamedMessageHandler(MsgSetVolume);
             mm.UnregisterNamedMessageHandler(MsgApplyVolume);
             mm.UnregisterNamedMessageHandler(MsgSyncSettings);
-
+            mm.UnregisterNamedMessageHandler(MsgModPresent);
             handlersRegistered = false;
             Plugin.Log("BoomBoxOverhaul network handlers unregistered.");
         }
+        //Modded client and host checks 
+        //Roughish way
+        public static void SendModPresent()
+        {
+            if (boundManager == null || !handlersRegistered || !boundManager.IsClient)
+            {
+                return;
+            }
 
+            using (FastBufferWriter writer = new FastBufferWriter(8, Allocator.Temp))
+            {
+                boundManager.CustomMessagingManager.SendNamedMessage(MsgModPresent, NetworkManager.ServerClientId, writer);
+            }
+        }
+
+        private static void OnModPresent(ulong senderClientId, FastBufferReader reader)
+        {
+            if (!knownModdedClients.Contains( senderClientId))
+            {
+                knownModdedClients.Add(senderClientId);
+            }
+
+            if (boundManager != null && boundManager.IsClient && senderClientId == NetworkManager.ServerClientId)
+            {
+                Plugin.HostHasBoomBoxOverhaul = true;
+                Plugin.HasRecievedHostHandshake = true;
+            }
+        }
+
+        public static void MarkHostAsModded()
+        {
+            if (boundManager != null && boundManager.IsServer)
+            {
+                knownModdedClients.Add(NetworkManager.ServerClientId);
+                Plugin.HostHasBoomBoxOverhaul = true;
+                Plugin.HasRecievedHostHandshake = true;
+            }
+        }
+
+        public static bool IsClientKnownModded(ulong clientId)
+        {
+            return knownModdedClients.Contains(clientId);
+        }
+
+        public static void RemoveKnownClient(ulong clientId)
+        {
+            if (knownModdedClients.Contains(clientId))
+            {
+                knownModdedClients.Remove(clientId);
+            }
+        }
+
+        /// get names
+        
+        public static string GetClientDisplayName(ulong clientId)
+        {
+            try
+            {
+                if (boundManager == null || boundManager.ConnectedClients == null)
+                {
+                    return clientId.ToString();
+                }
+
+                NetworkClient client;
+                if (!boundManager.ConnectedClients.TryGetValue(clientId, out client))
+                {
+                    return clientId.ToString();
+                }
+
+                if (client != null && client.PlayerObject != null)
+                {
+                    PlayerControllerB player = client.PlayerObject.GetComponent<PlayerControllerB>();
+                    if (player != null && !string.IsNullOrEmpty(player.playerUsername))
+                    {
+                        return player.playerUsername;
+                    }
+                }
+            }
+            catch { 
+            }
+            return clientId.ToString();
+        }
         public static UnifiedBoomboxController GetController(ulong networkObjectId)
         {
             if (boundManager == null || boundManager.SpawnManager == null)

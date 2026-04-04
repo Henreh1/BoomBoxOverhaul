@@ -3,6 +3,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using System.ComponentModel.Design;
 using System.IO;
+using Unity.Netcode;
 using UnityEngine;
 
 namespace BoomBoxOverhaul
@@ -51,6 +52,9 @@ namespace BoomBoxOverhaul
         internal static bool HasSyncedVolumeMode = false;
         internal static bool SyncedWeightlessBoombox = true;
         internal static bool HasSyncedWeightlessBoombox = false;
+
+        internal static bool HostHasBoomBoxOverhaul = false;
+        internal static bool HasRecievedHostHandshake = false;
 
         internal static string PluginFolder = "";
         internal static string CacheFolder = "";
@@ -116,6 +120,58 @@ namespace BoomBoxOverhaul
             Logger.LogInfo("BoomBoxOverhaul network boot started.");
         }
 
+        //Network checkers or something
+
+        internal static bool CanUseHostForcedGameplayFeatures()
+        {
+            if (Unity.Netcode.NetworkManager.Singleton == null)
+            {
+                return true;
+            }
+
+            if (Unity.Netcode.NetworkManager.Singleton.IsServer)
+            {
+                return true;
+            }
+
+            return HasRecievedHostHandshake && HostHasBoomBoxOverhaul;
+        }
+
+        internal static bool UseInfiniteBattery()
+        {
+            if (!CanUseHostForcedGameplayFeatures())
+            {
+                return false;
+            }
+
+            return InfiniteBattery.Value;
+        }
+
+        internal static bool UseKeepPlayingPocketed()
+        {
+            if (!CanUseHostForcedGameplayFeatures())
+            {
+                return false;
+            }
+            return KeepPlayingPocketed.Value;
+        }
+
+        internal static bool UseWeightlessBoombox()
+        {
+            if (!CanUseHostForcedGameplayFeatures())
+            {
+                return false;
+            }
+            
+        if (Unity.Netcode.NetworkManager.Singleton != null
+        && Unity.Netcode.NetworkManager.Singleton.IsClient
+        && HasSyncedWeightlessBoombox)
+        {
+        return SyncedWeightlessBoombox;
+            }
+            return WeightlessBoombox.Value;
+        }
+
         internal static bool UseLocalVolumeOnly()
         {
             if (Unity.Netcode.NetworkManager.Singleton != null
@@ -127,22 +183,13 @@ namespace BoomBoxOverhaul
 
             return LocalVolumeOnly.Value;
         }
-        internal static bool UseWeightlessBoombx()
-        {
-            if (Unity.Netcode.NetworkManager.Singleton != null
-            && Unity.Netcode.NetworkManager.Singleton.IsClient
-            && HasSyncedWeightlessBoombox)
-            {
-                return SyncedWeightlessBoombox;
-            }
-            return WeightlessBoombox.Value;
-        }
+
         internal static AudioModeType UseAudioMode()
         {
             return AudioMode.Value;
         }
 
-        //Debug logs
+        //Debug logs option for my own sanity
 
         internal static void DbgLog(string msg)
         {
@@ -151,7 +198,6 @@ namespace BoomBoxOverhaul
                 Log("[DBG] " + msg);
             }
         }
-        //End of debug logs
         internal static void Log(string msg)
         {
             if (Instance != null)
