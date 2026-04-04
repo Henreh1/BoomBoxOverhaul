@@ -15,7 +15,7 @@ namespace BoomBoxOverhaul
         {
             try
             {
-                if (Plugin.InfiniteBattery.Value)
+                if (Plugin.UseInfiniteBattery())
                 {
                     ___itemProperties.requiresBattery = false;
                 }
