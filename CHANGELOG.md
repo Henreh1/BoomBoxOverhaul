@@ -2,14 +2,15 @@
 
 #### **Additions:**
 
-* Added Preset audio modes: Realistic, Pure Music and Balanced all configurable in the config file!
+* Added Preset audio modes: Realistic, Pure Music and Balanced all configurable in the config file! More info on this can be found [Here](wiki link when dylan finishes it!)
 * Added config option to remove boombox weight (It is made of air!) Host decision is enforced to avoid exploiting
 * Added New Status on UI for the currently selected Audio mode!
 * Added Regex cleaning on video titles so the displayed track should be less cluttered
 * Added Debug log mode for most network related logs and gameplay run logs
 * Added config option for debug logs, enable if you are having trouble with the mod (Disabled by default :D)
-* Added clip rebuilding for noticeable gains in increased volume figures (100 - 200 should be more noticeable)
+* Added clip rebuilding for noticeable gains in increased volume figures (100 - 200 should be more noticeable) More info on how this works can be found [Here](wiki link when I make it)
 * Added distanced based volume to make the music distanced be based off of the current volume option
+* Added modded checks so that a client cant use the "Advantageous" features if the host does not have the mod
 
 #### **Fixes:**
 
