@@ -458,7 +458,9 @@ namespace BoomBoxOverhaul
                 return;
             }
 
-            float t = Mathf.Clamp01(localVolume);
+            float t = Mathf.Clamp(localVolume / 2f, 0f, 1f);
+            //t = t * t; // Should be better distance on higher volumes may go to t = t * t * t if more aggresive curve or may add config IDK yet
+            t = t * t * t; // More aggressive curve for distance
 
             Audio.minDistance = Mathf.Lerp(1f, presetMinDistance, t);
             Audio.maxDistance = Mathf.Lerp(4f, presetMaxDistance, t);
@@ -487,18 +489,18 @@ namespace BoomBoxOverhaul
                 switch (Plugin.UseAudioMode())
                 {
                     case AudioModeType.Realistic:
-                        presetMinDistance = 1.5f;
-                        presetMaxDistance = 10f;
+                        presetMinDistance = 2f;
+                        presetMaxDistance = 18f;
                         break;
 
                     case AudioModeType.PureMusic:
-                        presetMinDistance = 2.5f;
-                        presetMaxDistance = 12f;
+                        presetMinDistance = 6f;
+                        presetMaxDistance = 40f;
                         break;
 
                     default:  //Default is balanced "Because it just works" - Todd howard
-                        presetMinDistance = 2f;
-                        presetMaxDistance = 11f;
+                        presetMinDistance = 4f;
+                        presetMaxDistance = 34f;
                         break;
                 }
 
