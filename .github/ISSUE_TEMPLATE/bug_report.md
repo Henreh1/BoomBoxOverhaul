@@ -1,9 +1,9 @@
 ---
 name: Bug report
 about: Create a report to help us improve
-title: "[BUG]"
+title: ''
 labels: ''
-assignees: Henreh1
+assignees: ''
 
 ---
 
@@ -17,14 +17,16 @@ Steps to reproduce the behavior:
 3. Scroll down to '....'
 4. See error
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Log upload**
-Please add  an upload of the log with debug logs enabled. This can be activated in the config of the mod!
+**Screenshots or Videos**
+If applicable, add screenshots or videos to help explain your problem.
 
 **Desktop (please complete the following information):**
- - OS: [e.g. iOS]
+ - OS: [e.g. Windows, Linux]
+ - Game Version [e.g. V73]
+ - Mod Version [e.g. 1.0.5]
 
-**Mod Profile Code**
-Please attach a copy of you mod profile code.
+**Log File**
+If possible, please attach your log file. You may be asked to recreate the bug again. It may be a good idea to set EnableDebugLog to true as it gives tons of useful information.
+
+**Additional context**
+Add any other context about the problem here. What mods you use may be useful!
