@@ -1,17 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Text;
+using System.Reflection;
+using YoutubeDLSharp;
+using YoutubeDLSharp.Metadata;
+using YoutubeDLSharp.Options;
 
 namespace BoomBoxOverhaul
 {
     internal static class YtDlpBridge
     {
+
+        //Set wrapper paths or somn
+
+        private static YoutubeDL CreateClient(DependencyState dep)
+        {
+            YoutubeDL ytdl = new YoutubeDL();
+            ytdl.YoutubeDLPath = dep.YtDlpPath;
+            ytdl.FFmpegPath = dep.FfmpegPath;
+            ytdl.OutputFolder = Plugin.CacheFolder;
+            return ytdl;
+        }
+
+
         public static bool ResolvePlaylistIds(string url, out List<string> ids)
         {
             ids = new List<string>();
-
             try
             {
                 DependencyState dep = DependencyBootstrapper.GetState();
@@ -20,32 +35,32 @@ namespace BoomBoxOverhaul
                     return false;
                 }
 
-                string args = "--flat-playlist --print \"%(id)s\" \"" + EscapeArg(url) + "\"";
-                string stdout;
-                string stderr;
+                YoutubeDL ytdl = CreateClient(dep);
+                var result = ytdl.RunVideoDataFetch(url).GetAwaiter().GetResult();
 
-                if (!RunProcess(dep.YtDlpPath, args, out stdout, out stderr, 120000))
+                if (!result.Success || result.Data == null)
                 {
-                    Plugin.Warn("yt-dlp playlist resolve failed: " + stderr);
+                    Plugin.Warn("yt-dlp playlist feth failed");
                     return false;
                 }
 
-                using (StringReader reader = new StringReader(stdout))
-                {
-                    while (true)
-                    {
-                        string line = reader.ReadLine();
-                        if (line == null)
-                        {
-                            break;
-                        }
+                VideoData data = result.Data;
 
-                        line = line.Trim();
-                        if (line.Length > 0)
+                if (data.Entries != null)
+                {
+                    int i;
+                    for (i = 0; i < data.Entries.Length; i++)
+                    {
+                        VideoData entry = data.Entries[i];
+                        if (entry != null && !string.IsNullOrEmpty(entry.ID))
                         {
-                            ids.Add(line);
+                            ids.Add(entry.ID);
                         }
                     }
+                }
+                else if (!string.IsNullOrEmpty(data.ID))
+                {
+                    ids.Add(data.ID);
                 }
 
                 if (Plugin.ShufflePlaylist.Value && ids.Count > 1)
@@ -55,12 +70,11 @@ namespace BoomBoxOverhaul
                     for (i = ids.Count - 1; i > 0; i--)
                     {
                         int j = rng.Next(i + 1);
-                        string tmp = ids[i];
+                        string temp = ids[i];
                         ids[i] = ids[j];
-                        ids[j] = tmp;
+                        ids[j] = temp;
                     }
                 }
-
                 return ids.Count > 0;
             }
             catch (Exception ex)
@@ -69,6 +83,8 @@ namespace BoomBoxOverhaul
                 return false;
             }
         }
+
+        //Feth track using wrapper because why not
 
         public static bool FetchTrack(string sourceUrl, string videoId, out TrackInfo info)
         {
@@ -92,62 +108,30 @@ namespace BoomBoxOverhaul
                     return true;
                 }
 
-                string tempBase = CacheManager.BuildTrackBasePath(videoId) + "_tmp";
-                string tempAudio = tempBase + ".mp3";
+                YoutubeDL ytdl = CreateClient(dep);
 
-                if (File.Exists(tempAudio))
+                var metaResult = ytdl.RunVideoDataFetch(sourceUrl).GetAwaiter().GetResult();
+                if (metaResult.Success && metaResult.Data != null)
                 {
-                    try
-                    {
-                        File.Delete(tempAudio);
-                    }
-                    catch
-                    {
-                    }
-                }
+                    VideoData data = metaResult.Data;
+                    info.title = data.Title;
 
-                string metadataArgs = "--no-playlist --print \"%(title)s|||%(duration)s|||%(id)s\" \"" + EscapeArg(sourceUrl) + "\"";
-                string metaStdout;
-                string metaStderr;
-
-                if (RunProcess(dep.YtDlpPath, metadataArgs, out metaStdout, out metaStderr, 120000))
-                {
-                    string[] parts = metaStdout.Trim().Split(new string[] { "|||" }, StringSplitOptions.None);
-                    if (parts.Length >= 3)
+                    if (data.Duration.HasValue)
                     {
-                        info.title = parts[0];
-                        float duration;
-                        if (float.TryParse(parts[1], out duration))
-                        {
-                            info.durationSeconds = duration;
-                        }
+                        info.durationSeconds = (float)data.Duration.Value;
                     }
                 }
 
                 if (Plugin.MaxTrackSeconds.Value > 0 && info.durationSeconds > Plugin.MaxTrackSeconds.Value)
                 {
+                    Plugin.Warn("Track is too long, skipping.");
                     return false;
                 }
 
-                string ffmpegFolder = Path.GetDirectoryName(dep.FfmpegPath) ?? Plugin.ToolsFolder;
-                string downloadArgs =
-                    "--no-playlist " +
-                    "--extract-audio --audio-format mp3 --audio-quality 0 " +
-                    "--ffmpeg-location \"" + EscapeArg(ffmpegFolder) + "\" " +
-                    "--output \"" + EscapeArg(tempBase) + ".%(ext)s\" " +
-                    "\"" + EscapeArg(sourceUrl) + "\"";
-
-                string dlStdout;
-                string dlStderr;
-
-                if (!RunProcess(dep.YtDlpPath, downloadArgs, out dlStdout, out dlStderr, 900000))
+                var audioResult = ytdl.RunAudioDownload(sourceUrl, AudioConversionFormat.Mp3).GetAwaiter().GetResult();
+                if (!audioResult.Success || string.IsNullOrEmpty(audioResult.Data) || !File.Exists(audioResult.Data))
                 {
-                    Plugin.Warn("Download failed: " + dlStderr);
-                    return false;
-                }
-
-                if (!File.Exists(tempAudio))
-                {
+                    Plugin.Warn("Download Failed, sorry :(");
                     return false;
                 }
 
@@ -156,7 +140,7 @@ namespace BoomBoxOverhaul
                     File.Delete(info.cachePath);
                 }
 
-                File.Move(tempAudio, info.cachePath);
+                File.Move(audioResult.Data, info.cachePath);
                 CacheManager.Touch(info.cachePath);
                 CacheManager.WriteMeta(videoId, info.title);
                 CacheManager.Prune();
@@ -168,60 +152,61 @@ namespace BoomBoxOverhaul
                 return false;
             }
         }
-
-        private static bool RunProcess(string exePath, string args, out string stdout, out string stderr, int timeoutMs)
-        {
-            stdout = "";
-            stderr = "";
-
-            try
-            {
-                using (Process proc = new Process())
-                {
-                    proc.StartInfo = new ProcessStartInfo
-                    {
-                        FileName = exePath,
-                        Arguments = args,
-                        WorkingDirectory = Plugin.ToolsFolder,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true,
-                        StandardOutputEncoding = Encoding.UTF8,
-                        StandardErrorEncoding = Encoding.UTF8
-                    };
-
-                    proc.Start();
-                    stdout = proc.StandardOutput.ReadToEnd();
-                    stderr = proc.StandardError.ReadToEnd();
-
-                    if (!proc.WaitForExit(timeoutMs))
-                    {
-                        try
-                        {
-                            proc.Kill();
-                        }
-                        catch
-                        {
-                        }
-
-                        stderr += "\nProcess timed out.";
-                        return false;
-                    }
-
-                    return proc.ExitCode == 0;
-                }
-            }
-            catch (Exception ex)
-            {
-                stderr = ex.ToString();
-                return false;
-            }
-        }
-
-        private static string EscapeArg(string value)
-        {
-            return value.Replace("\"", "\\\"");
-        }
     }
 }
+        //Old method for running yt-dlp directly
+    //    private static bool RunProcess(string exePath, string args, out string stdout, out string stderr, int timeoutMs)
+    //    {
+    //        stdout = "";
+    //        stderr = "";
+
+    //        try
+    //        {
+    //            using (Process proc = new Process())
+    //            {
+    //                proc.StartInfo = new ProcessStartInfo
+    //                {
+    //                    FileName = exePath,
+    //                    Arguments = args,
+    //                    WorkingDirectory = Plugin.ToolsFolder,
+    //                    UseShellExecute = false,
+    //                    RedirectStandardOutput = true,
+    //                    RedirectStandardError = true,
+    //                    CreateNoWindow = true,
+    //                    StandardOutputEncoding = Encoding.UTF8,
+    //                    StandardErrorEncoding = Encoding.UTF8
+    //                };
+
+    //                proc.Start();
+    //                stdout = proc.StandardOutput.ReadToEnd();
+    //                stderr = proc.StandardError.ReadToEnd();
+
+    //                if (!proc.WaitForExit(timeoutMs))
+    //                {
+    //                    try
+    //                    {
+    //                        proc.Kill();
+    //                    }
+    //                    catch
+    //                    {
+    //                    }
+
+    //                    stderr += "\nProcess timed out.";
+    //                    return false;
+    //                }
+
+    //                return proc.ExitCode == 0;
+    //            }
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            stderr = ex.ToString();
+    //            return false;
+    //        }
+    //    }
+
+    //    private static string EscapeArg(string value)
+    //    {
+    //        return value.Replace("\"", "\\\"");
+    //    }
+    //}
