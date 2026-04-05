@@ -2,7 +2,7 @@
 
 #### **Additions:**
 
-* Added Preset audio modes: Realistic, Pure Music and Balanced all configurable in the config file! More info on this can be found [Here](wiki link when dylan finishes it!)
+* Added Preset audio modes: Realistic, Pure Music and Balanced all configurable in the config file! More info on this can be found [Here](wiki link when dylans lazy ass finishes it!)
 * Added config option to remove boombox weight (It is made of air!) Host decision is enforced to avoid exploiting
 * Added New Status on UI for the currently selected Audio mode!
 * Added Regex cleaning on video titles so the displayed track should be less cluttered
@@ -14,7 +14,9 @@
 
 #### **Fixes:**
 
-* Fixed debug logs
+* Fixed ```Audio source failed to initialize audio spatializer.``` Log spam
+* Fixed ```PlayOneShot was called with a null AudioClip.``` Error when Equipping or unequipping the boombox
+* Fixed logs not working as intended
 * Fixed log spam that was caused by actually fixing the logs XD
 * Fixed the "Whine" effect that audio would have when moving away from the boombox ->
 * This was done by altering the doppler effect, I did this at 3am after hours of testing new features, If people miss this follow the issue/feature request guide in the README
