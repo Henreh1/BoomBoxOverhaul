@@ -60,6 +60,8 @@ namespace BoomBoxOverhaul
         internal static string CacheFolder = "";
         internal static string ToolsFolder = "";
 
+        internal static AudioClip SilentSFXClip;
+
         private void Awake()
         {
             Instance = this;
@@ -104,6 +106,12 @@ namespace BoomBoxOverhaul
                 FileSystemHelpers.TryDeleteDirectoryContents(CacheFolder);
             }
 
+            if (SilentSFXClip == null)
+            {
+                SilentSFXClip = AudioClip.Create("BoomBoxOverhaul_SilentSFX", 1, 1, 44100, false);
+                SilentSFXClip.SetData(new float[] { 0f }, 0); //Silent sfx for boombox equip events etc a very very caveman way to prevcnt playoneshot audio clip null
+            }
+
             Harmony = new Harmony(ModGuid);
             Harmony.PatchAll();
 
@@ -137,6 +145,8 @@ namespace BoomBoxOverhaul
             return HasRecievedHostHandshake && HostHasBoomBoxOverhaul;
         }
 
+
+
         internal static bool UseInfiniteBattery()
         {
             if (!CanUseHostForcedGameplayFeatures())
@@ -155,6 +165,7 @@ namespace BoomBoxOverhaul
             }
             return KeepPlayingPocketed.Value;
         }
+
 
         internal static bool UseWeightlessBoombox()
         {
@@ -183,6 +194,7 @@ namespace BoomBoxOverhaul
 
             return LocalVolumeOnly.Value;
         }
+
 
         internal static AudioModeType UseAudioMode()
         {
@@ -223,6 +235,7 @@ namespace BoomBoxOverhaul
                     .LogWarning(msg);
             }
         }
+
         internal static void Error(string msg)
         {
             if (Instance != null)

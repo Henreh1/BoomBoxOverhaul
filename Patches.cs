@@ -19,6 +19,23 @@ namespace BoomBoxOverhaul
                 {
                     ___itemProperties.requiresBattery = false;
                 }
+                if (__instance.itemProperties != null)
+                {
+                    if (__instance.itemProperties.grabSFX == null)
+                    {
+                        __instance.itemProperties.grabSFX = Plugin.SilentSFXClip;
+                    }
+
+                    if (__instance.itemProperties.dropSFX == null)
+                    {
+                        __instance.itemProperties.dropSFX = Plugin.SilentSFXClip;
+                    }
+
+                    if (__instance.itemProperties.pocketSFX == null)
+                    {
+                        __instance.itemProperties.pocketSFX = Plugin.SilentSFXClip;
+                    }
+                }
 
                 if (__instance.GetComponent<UnifiedBoomboxController>() == null)
                 {

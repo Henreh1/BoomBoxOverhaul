@@ -47,10 +47,6 @@ namespace BoomBoxOverhaul
         private float presetMinDistance = 2f;
         private float presetMaxDistance = 14f;
 
-        private AudioLowPassFilter lowPassFilter;
-        private float occlusionVolumeMultiplier = 1f;   
-
-
         private void Awake()
         {
             Plugin.Log("Your boombox has been upgraded!");
@@ -70,11 +66,18 @@ namespace BoomBoxOverhaul
                     break;
                 }
             }
-
+            //Make custom audio source
             if (Audio == null)
             {
                 Audio = gameObject.AddComponent<AudioSource>();
                 Audio.name = "BoomBoxOverhaulAudio";
+            }
+
+            if (Boombox != null && Boombox.boomboxAudio != null)
+            {
+                Boombox.boomboxAudio.Stop();
+                Boombox.boomboxAudio.playOnAwake = false;
+                Boombox.boomboxAudio.loop = false;
             }
 
             Audio.bypassEffects = false;
@@ -83,21 +86,14 @@ namespace BoomBoxOverhaul
 
             Audio.playOnAwake = false;
             Audio.loop = false;
+            Audio.spatialize = false;
+            Audio.spatializePostEffects = false;
+
             ApplyAudioModeSettings();
 
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
             ApplyLocalVolume();
-            ApplyOcculsion();
             RefreshHeldItemTooltip();
-
-            lowPassFilter = GetComponent<AudioLowPassFilter>();
-            if (lowPassFilter == null)
-            {
-                lowPassFilter = gameObject.AddComponent<AudioLowPassFilter>();
-            }
-
-            lowPassFilter.cutoffFrequency = 22000f;
-            lowPassFilter.lowpassResonanceQ = 1f;
         }
 
         private void Update()
@@ -139,10 +135,6 @@ namespace BoomBoxOverhaul
             {
                 OnTrackEndedLocal();
             }
-            if (isPlayingCustom)
-            {
-                ApplyOcculsion();
-            }
         }
 
         private void HandleInput()
@@ -168,7 +160,6 @@ namespace BoomBoxOverhaul
                 if (Plugin.UseLocalVolumeOnly())
                 {
                     ApplyLocalVolume();
-                    ApplyOcculsion();
                     Plugin.DbgLog("Applied local-only volume up: " + localVolume);
                 }
                 else
@@ -181,7 +172,6 @@ namespace BoomBoxOverhaul
                     else
                     {
                         ApplyLocalVolume();
-                        ApplyOcculsion();
                         Plugin.Warn("Object missing, fell back to local volume, sorry!");
                     }
                 }
@@ -195,7 +185,6 @@ namespace BoomBoxOverhaul
                 if (Plugin.UseLocalVolumeOnly())
                 {
                     ApplyLocalVolume();
-                    ApplyOcculsion();
                     Plugin.DbgLog("Applied local-only volume down: " + localVolume);
                 }
                 else
@@ -208,7 +197,6 @@ namespace BoomBoxOverhaul
                     else
                     {
                         ApplyLocalVolume();
-                        ApplyOcculsion();
                         Plugin.Warn("Object missing, fell back to local volume, sorry!");
                     }
                 }
@@ -359,8 +347,7 @@ namespace BoomBoxOverhaul
             float baseVolume = clamped <= 1f ? clamped : 1f;
 
             //above 100 percent clip boosted shoulkd be handled on track load to optimise performance
-            //Audio.volume = Mathf.Clamp01(clamped);
-            Audio.volume = baseVolume * occlusionVolumeMultiplier;
+            Audio.volume = baseVolume;
 
             ApplyDistanceSettingsForCurrentVolume();
 
@@ -390,7 +377,6 @@ namespace BoomBoxOverhaul
             Plugin.DbgLog("ClientApplyNetworkVolume > " + volume);
             localVolume = Mathf.Clamp(volume, 0f, 2f);
             ApplyLocalVolume();
-            ApplyOcculsion();
         }
 
         //////////////////////////////////////////////////// 
@@ -473,47 +459,13 @@ namespace BoomBoxOverhaul
         ////////////////////////////////////////
         ///Muffled sound stuff (experimental)///
         ////////////////////////////////////////
-       
-        private void ApplyOcculsion()
-        {
-            if (Audio == null || lowPassFilter == null || Camera.main == null)
-            {
-                return;
-            }
 
-            PlayerControllerB localPlayer = GameNetworkManager.Instance != null ? GameNetworkManager.Instance.localPlayerController : null; //Should never be null but just in case becasue this is spaghetti 
-
-            if (localPlayer == null || localPlayer.gameplayCamera == null)
-            {
-                lowPassFilter.cutoffFrequency = 22000f;
-                occlusionVolumeMultiplier = 1f;
-                return;
-            }
-
-            Vector3 from = transform.position + Vector3.up * 0.35f;
-            Vector3 to = localPlayer.gameplayCamera.transform.position;
-
-            RaycastHit hit;
-            bool blocked = UnityEngine.Physics.Linecast(from, to, out hit, ~0, QueryTriggerInteraction.Ignore);
-            if (blocked && hit.collider !=null && hit.collider.transform != transform)
-            {
-                lowPassFilter.cutoffFrequency = 900f;
-                occlusionVolumeMultiplier = 0.5f;
-            }
-            else
-            {
-                lowPassFilter.cutoffFrequency = 22000f;
-                occlusionVolumeMultiplier = 1f;
-            }
-
-            float clamped = Mathf.Clamped(localVolume, 0f, 2f);
-            float baseVolume = clamped <= 1f ? clamped : 1f;
-            Audio.volume = baseVolume * occlusionVolumeMultiplier;
-        }
+        //Yeah I could not get this to work in a way that I was happy with may come back to it later maybe I wont IDK yet :/
+     
         ////////////////////////////////////////
         /// Distance Volume settings thingies///
         ////////////////////////////////////////
-        
+
         private void ApplyDistanceSettingsForCurrentVolume()
         {
             if (Audio == null)
@@ -630,6 +582,8 @@ namespace BoomBoxOverhaul
             }
         }
 
+
+
         private void StopVanillaBoomboxAudio()
         {
             try
@@ -639,12 +593,9 @@ namespace BoomBoxOverhaul
                     return;
                 }
 
-                if (Boombox.boomboxAudio != null)
+                if (Boombox.boomboxAudio != null)//changed to allow regular drop place sfx tro prevent unity complaining about null audio clip
                 {
                     Boombox.boomboxAudio.Stop();
-                    Boombox.boomboxAudio.volume = 0f;
-                    Boombox.boomboxAudio.spatialBlend = 1f;
-                    Boombox.boomboxAudio.maxDistance = 0f;
                 }
 
                 Boombox.isPlayingMusic = false;
@@ -750,8 +701,8 @@ namespace BoomBoxOverhaul
         public void RefreshWeightSettingsFromSync()
         {
             ApplyWeightSettings();
-        }   
-     private string GetScrollingTrackText()
+        }
+        private string GetScrollingTrackText()
         {
             string title = currentTrackTitle;
             if (string.IsNullOrEmpty(title))
@@ -1041,7 +992,7 @@ namespace BoomBoxOverhaul
                 }
 
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-                
+
                 currentTrackTitle = string.IsNullOrEmpty(info.title) ? "Unknown Title" : CleanTrackTitle(info.title);
                 tooltipScrollIndex = 0;
                 tooltipScrollTimer = 0f;
@@ -1052,7 +1003,6 @@ namespace BoomBoxOverhaul
                 Audio.clip = basePlaybackClip;
 
                 ApplyLocalVolume();
-                ApplyOcculsion();
                 statusText = "Ready: " + clip.name;
                 Plugin.DbgLog("Clip READY: " + videoId);
                 Plugin.Log("Local clip ready for: " + videoId);
@@ -1090,13 +1040,13 @@ namespace BoomBoxOverhaul
 
             cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();// Collapse whitespace again
 
-            if (string.IsNullOrEmpty (cleaned))
+            if (string.IsNullOrEmpty(cleaned))
             {
                 return "Unknown Title";
             }
 
             return cleaned;
-                
+
         }
         public void ServerNotifyReady(ulong clientId, bool success)
         {
@@ -1171,7 +1121,7 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
-           if (Audio != null && basePlaybackClip != null)
+            if (Audio != null && basePlaybackClip != null)
             {
                 suppressVanillaStopOnce = true;
                 StopVanillaBoomboxAudio();
@@ -1181,7 +1131,6 @@ namespace BoomBoxOverhaul
                 ApplyAudioModeSettings();
                 RebuildPlaybackClipForVolume();
                 ApplyLocalVolume();
-                ApplyOcculsion();
 
                 Audio.Play();
             }
