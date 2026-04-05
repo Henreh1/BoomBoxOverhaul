@@ -1,9 +1,9 @@
 ﻿using System;
 using System.IO;
-using System.IO.Compression;
-using System.Net;
 using System.Threading;
 using UnityEngine;
+using UnityEngine.Diagnostics;
+using YoutubeDLSharp;
 
 namespace BoomBoxOverhaul
 {
@@ -85,6 +85,8 @@ namespace BoomBoxOverhaul
             });
         }
 
+       //Following 753 advice and using dependancy :D
+
         private static void ResolveYtDlp()
         {
             Plugin.Log("Checking for yt-dlp...");
@@ -101,15 +103,15 @@ namespace BoomBoxOverhaul
             if (Plugin.SearchPathForTools.Value)
             {
                 string onPath = FileSystemHelpers.TryFindOnPath("yt-dlp.exe");
-                if (!string.IsNullOrEmpty(onPath))
+                if ( !string.IsNullOrEmpty(onPath))
                 {
                     state.YtDlpPath = onPath;
                     status = "Using PATH yt-dlp.";
                     Plugin.Log("yt-dlp found on PATH: " + onPath);
                     return;
-                }
+                }   
+                
             }
-
             if (!Plugin.AutoDownloadYtDlp.Value)
             {
                 status = "yt-dlp missing.";
@@ -122,22 +124,27 @@ namespace BoomBoxOverhaul
                 status = "Downloading yt-dlp...";
                 Plugin.Log(status);
 
-                using (WebClient client = new WebClient())
+                //Wrapper things (I think)
+                YoutubeDLSharp.Utils.DownloadYtDlp(Plugin.ToolsFolder).GetAwaiter().GetResult();
+                if (File.Exists(local))
                 {
-                    client.Headers.Add("User-Agent", "BoomBoxOverhaul/2.0.0");
-                    client.DownloadFile("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", local);
+                    state.YtDlpPath = local;
+                    status = "yt-dlp downloaded successfully. Hopefully :D";
+                    Plugin.Log("yt-dlp ready at: " + local);
                 }
-
-                state.YtDlpPath = local;
-                status = "yt-dlp downloaded successfully.";
-                Plugin.Log("yt-dlp ready at: " + local);
+                else
+                {
+                    status = "yt-dlp download completed but executable not found.";
+                    Plugin.Warn(status);
+                }
             }
             catch (Exception ex)
-            {
-                status = "Failed downloading yt-dlp: " + ex.Message;
+            { status = "Failed downloading yt-dlp: " + ex.Message;
                 Plugin.Error(status);
             }
         }
+
+        //FFmpeg stuff, also following 753 advice and using dependancy :D
 
         private static void ResolveFfmpeg()
         {
@@ -158,7 +165,7 @@ namespace BoomBoxOverhaul
                 if (!string.IsNullOrEmpty(onPath))
                 {
                     state.FfmpegPath = onPath;
-                    status = "Using PATH ffmpeg.";
+                    status = "Usaing PATH ffmpeg.";
                     Plugin.Log("ffmpeg found on PATH: " + onPath);
                     return;
                 }
@@ -171,71 +178,28 @@ namespace BoomBoxOverhaul
                 return;
             }
 
-            string zipUrl = Plugin.FfmpegZipUrl.Value == null ? "" : Plugin.FfmpegZipUrl.Value.Trim();
-
-            if (string.IsNullOrEmpty(zipUrl))
-            {
-                zipUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
-                Plugin.Warn("ffmpeg ZIP URL was empty, falling back to built-in default.");
-            }
-
             try
             {
-                status = "Downloading FFmpeg...";
+                status = "Downloading ffmpeg...";
                 Plugin.Log(status);
+                //Wrapper things
+                YoutubeDLSharp.Utils.DownloadFFmpeg(Plugin.ToolsFolder).GetAwaiter().GetResult();
 
-                string zipPath = Path.Combine(Plugin.ToolsFolder, "ffmpeg_package.zip");
-                string extractPath = Path.Combine(Plugin.ToolsFolder, "ffmpeg_extract");
-
-                if (File.Exists(zipPath))
+                if (File.Exists(localExe))
                 {
-                    File.Delete(zipPath);
-                }
-
-                if (Directory.Exists(extractPath))
-                {
-                    Directory.Delete(extractPath, true);
-                }
-
-                using (WebClient client = new WebClient())
-                {
-                    client.Headers.Add("User-Agent", "BoomBoxOverhaul/2.0.0");
-                    client.DownloadFile(zipUrl, zipPath);
-                }
-
-                Plugin.Log("FFmpeg archive downloaded: " + zipPath);
-
-                ZipFile.ExtractToDirectory(zipPath, extractPath);
-                Plugin.Log("FFmpeg archive extracted.");
-
-                string[] ffmpegCandidates = Directory.GetFiles(extractPath, "ffmpeg.exe", SearchOption.AllDirectories);
-                string[] ffprobeCandidates = Directory.GetFiles(extractPath, "ffprobe.exe", SearchOption.AllDirectories);
-
-                if (ffmpegCandidates.Length > 0)
-                {
-                    File.Copy(ffmpegCandidates[0], localExe, true);
                     state.FfmpegPath = localExe;
+                    status = "ffmpeg downloaded successfully. Hopefully :D";
                     Plugin.Log("ffmpeg ready at: " + localExe);
                 }
                 else
                 {
-                    status = "ffmpeg.exe not found in archive.";
+                    status = "ffmpeg download completed but executable not found.";
                     Plugin.Warn(status);
-                    return;
                 }
-
-                if (ffprobeCandidates.Length > 0)
-                {
-                    string localProbe = Path.Combine(Plugin.ToolsFolder, "ffprobe.exe");
-                    File.Copy(ffprobeCandidates[0], localProbe, true);
-                    Plugin.Log("ffprobe ready at: " + localProbe);
-                }
-
-                status = "ffmpeg downloaded successfully.";
             }
             catch (Exception ex)
             {
-                status = "Failed resolving ffmpeg: " + ex.Message;
+                status = "Failed downloading ffmpeg: " + ex.Message;
                 Plugin.Error(status);
             }
         }
