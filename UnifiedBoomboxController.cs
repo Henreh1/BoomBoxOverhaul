@@ -42,7 +42,7 @@ namespace BoomBoxOverhaul
 
         //Audio boost stuff (experimental subject to tuning/method changees if performance is bad :/
 
-  
+        private AudioClip basePlaybackClip;
 
 
         private BoomBoxOverhaulDspGain dspFilter;
@@ -76,6 +76,7 @@ namespace BoomBoxOverhaul
             if (Audio == null)
             {
                 Audio = audioObject.AddComponent<AudioSource>();
+                ForceDisableSpatializer(Audio);
             }
 
             Audio.name = "BoomBoxOverhaulAudio";
@@ -86,8 +87,11 @@ namespace BoomBoxOverhaul
                 dspFilter = audioObject.AddComponent<BoomBoxOverhaulDspGain>();
             }
 
+            ForceDisableSpatializer(Audio);
+
             if (Boombox != null && Boombox.boomboxAudio != null)
             {
+                ForceDisableSpatializer(Boombox.boomboxAudio);
                 Boombox.boomboxAudio.Stop();
                 Boombox.boomboxAudio.playOnAwake = false;
                 Boombox.boomboxAudio.loop = false;
@@ -101,6 +105,18 @@ namespace BoomBoxOverhaul
             Audio.loop = false;
             Audio.spatialize = false;
             Audio.spatializePostEffects = false;
+
+            AudioSource[] allSources = GetComponentsInChildren<AudioSource>(true);//For the love of god the failed audio spatialize unity warn is driving me mad
+            for ( int j = 0; j < allSources.Length; j++)
+            {
+                if (allSources[j] != null)
+                {
+                    allSources[j].spatialize = false;//If this does not work I will nuke everything! 
+                    allSources[j].spatializePostEffects = false;
+                }
+            }  
+            //Okat turns out this is just part of the game thank you cohen for telling me this <3
+            // Somethibng ist still hitting unitys spatialize path causing more spam than usual
 
             ApplyAudioModeSettings();
 
@@ -348,7 +364,18 @@ namespace BoomBoxOverhaul
                 }
             }
         }
+        //semi nuclear option because it is driving me nuts
 
+        private void ForceDisableSpatializer(AudioSource source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            source.spatialize = false;
+            source.spatializePostEffects = false;
+        }
         private void ApplyLocalVolume()
         {
             if (Audio == null || dspFilter == null)
@@ -370,7 +397,10 @@ namespace BoomBoxOverhaul
             }
             else
             {
-                dspGain = 1f + ((clamped - 1f) * 2f);
+                float t = clamped - 1f;
+
+                // cleaner boost curve than before, this has already taken hours to get to a point where I am happy final adjustments i promise //again i promise this is the last time
+                dspGain = 1f + (t * 1.25f);
             }
 
             dspFilter.Gain = dspGain;
@@ -403,7 +433,6 @@ namespace BoomBoxOverhaul
             ApplyLocalVolume();
         }
 
-
         ////////////////////////////////////////
         ///Muffled sound stuff (experimental)///
         ////////////////////////////////////////
@@ -434,6 +463,8 @@ namespace BoomBoxOverhaul
         ///////////////////////////
         private void ApplyAudioModeSettings()
         {
+            Audio.spatializePostEffects = false;
+            Audio.spatialize = false;
             try
             {
                 if (Audio == null)
@@ -544,6 +575,7 @@ namespace BoomBoxOverhaul
                 if (Boombox.boomboxAudio != null)//changed to allow regular drop place sfx tro prevent unity complaining about null audio clip
                 {
                     Boombox.boomboxAudio.Stop();
+                    ForceDisableSpatializer(Boombox.boomboxAudio);
                 }
 
                 Boombox.isPlayingMusic = false;
@@ -946,6 +978,10 @@ namespace BoomBoxOverhaul
                 tooltipScrollTimer = 0f;
                 clip.name = currentTrackTitle;
 
+                //ClearBoostedClip();
+                basePlaybackClip = clip;
+                Audio.clip = basePlaybackClip;
+
                 ApplyLocalVolume();
                 statusText = "Ready: " + clip.name;
                 Plugin.DbgLog("Clip READY: " + videoId);
@@ -1065,7 +1101,7 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
-            if (Audio != null)
+            if (Audio != null && basePlaybackClip != null)
             {
                 suppressVanillaStopOnce = true;
                 StopVanillaBoomboxAudio();
@@ -1073,6 +1109,7 @@ namespace BoomBoxOverhaul
                 Audio.time = 0f;
 
                 ApplyAudioModeSettings();
+                Audio.clip = basePlaybackClip;
                 ApplyLocalVolume();
 
 
@@ -1102,6 +1139,9 @@ namespace BoomBoxOverhaul
             isPlayingCustom = false;
             statusText = "Stopped";
             currentTrackTitle = "None";
+            basePlaybackClip = null;
+
+
 
             if (localLoadRoutine != null)
             {
@@ -1112,7 +1152,7 @@ namespace BoomBoxOverhaul
             if (Audio != null)
             {
                 Audio.Stop();
-            };
+            }
         }
 
         private void OnTrackEndedLocal()
