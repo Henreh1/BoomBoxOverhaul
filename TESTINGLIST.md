@@ -12,7 +12,7 @@
 * ~~Check New debug logs function~~ Done!
 * ~~Check boombox weight removal works~~ Done!
 * ~~Check Regex cleaning on video title on tooltip thingy~~ Done! **May add new checks to further reduce clutter**
-* ~~~Check `PlayOneShot was called with null AudioClip` Fix~~ Done!
+* ~~Check `PlayOneShot was called with null AudioClip` Fix~~ Done!
 *  ~~Check Ui changes are fine~~ Done!
 * Have friends check for grammar and spelling
 * ~~Check doppler causing whine effect~~ Done
