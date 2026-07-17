@@ -1,4 +1,4 @@
-# BoomBoxOverhaulV2
+# BoomBoxOverhaulV2, 2.1.0 is stuck in a form of Will i finish it?,  Will i not? I am working on a mod manager for a different game and that is consuming a lot of time :/
 
 This is an overhaul of my original BoomboxOverhaul mod. The original mod was designed to work with a specific youtube boombox mod that is no longer maintained. Because of this I decided to implement a working, albeit sometimes temperamental YouTube playback.
 
