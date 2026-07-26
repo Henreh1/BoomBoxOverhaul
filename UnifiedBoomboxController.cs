@@ -3,6 +3,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Unity.Netcode;
 using UnityEngine;
@@ -38,40 +40,89 @@ namespace BoomBoxOverhaul
         private float tooltipScrollTimer = 0f;
         private int tooltipScrollIndex = 0;
 
+        //Audio boost stuff (experimental subject to tuning/method changees if performance is bad :/
+
+        private AudioClip basePlaybackClip;
+
+
+        private BoomBoxOverhaulDspGain dspFilter;
+        private volatile float dspGain = 1f;
+
+        private float presetMinDistance = 2f;
+        private float presetMaxDistance = 14f;
+
         private void Awake()
         {
-            Plugin.Log("UnifiedBoomboxController attached to boombox.");
+            Plugin.Log("Your boombox has been upgraded!");
 
             Boombox = GetComponent<BoomboxItem>();
+            ApplyWeightSettings();
 
-            AudioSource[] sources = GetComponents<AudioSource>();
-            Audio = null;
+            Transform audioChild = transform.Find("BoomBoxOverhaulAudioObject");
+            GameObject audioObject;
 
-            int i;
-            for (i = 0; i < sources.Length; i++)
+            if (audioChild == null)
             {
-                if (sources[i] != null && sources[i] != Boombox.boomboxAudio && sources[i].name == "BoomBoxOverhaulAudio")
-                {
-                    Audio = sources[i];
-                    break;
-                }
+                audioObject = new GameObject("BoomBoxOverhaulAudioObject");
+                audioObject.transform.SetParent(transform, false);
+                audioObject.transform.localPosition = Vector3.zero;
+            }
+            else
+            {
+                audioObject = audioChild.gameObject;
             }
 
+            Audio = audioObject.GetComponent<AudioSource>();
             if (Audio == null)
             {
-                Audio = gameObject.AddComponent<AudioSource>();
-                Audio.name = "BoomBoxOverhaulAudio";
+                Audio = audioObject.AddComponent<AudioSource>();
+                ForceDisableSpatializer(Audio);
             }
+
+            Audio.name = "BoomBoxOverhaulAudio";
+
+            dspFilter = audioObject.GetComponent<BoomBoxOverhaulDspGain>();
+            if (dspFilter == null)
+            {
+                dspFilter = audioObject.AddComponent<BoomBoxOverhaulDspGain>();
+            }
+
+            ForceDisableSpatializer(Audio);
+
+            if (Boombox != null && Boombox.boomboxAudio != null)
+            {
+                ForceDisableSpatializer(Boombox.boomboxAudio);
+                Boombox.boomboxAudio.Stop();
+                Boombox.boomboxAudio.playOnAwake = false;
+                Boombox.boomboxAudio.loop = false;
+            }
+
+            Audio.bypassEffects = false;
+            Audio.bypassListenerEffects = false;
+            Audio.bypassReverbZones = false;
 
             Audio.playOnAwake = false;
             Audio.loop = false;
-            Audio.spatialBlend = 1f;
-            Audio.rolloffMode = AudioRolloffMode.Linear;
-            Audio.maxDistance = 30f;
+            Audio.spatialize = false;
+            Audio.spatializePostEffects = false;
+
+            AudioSource[] allSources = GetComponentsInChildren<AudioSource>(true);//For the love of god the failed audio spatialize unity warn is driving me mad
+            for ( int j = 0; j < allSources.Length; j++)
+            {
+                if (allSources[j] != null)
+                {
+                    allSources[j].spatialize = false;//If this does not work I will nuke everything! 
+                    allSources[j].spatializePostEffects = false;
+                }
+            }  
+            //Okat turns out this is just part of the game thank you cohen for telling me this <3
+            // Somethibng ist still hitting unitys spatialize path causing more spam than usual
+
+            ApplyAudioModeSettings();
 
             localVolume = Mathf.Clamp(Plugin.DefaultVolume.Value, 0f, 2f);
             ApplyLocalVolume();
-            UpdateTooltip();
+            RefreshHeldItemTooltip();
         }
 
         private void Update()
@@ -127,31 +178,30 @@ namespace BoomBoxOverhaul
                 }
 
                 SetCameraLocked(uiOpen);
-                Plugin.Log("Toggled boombox UI: " + (uiOpen ? "Open" : "Closed"));
+                Plugin.DbgLog("Toggled boombox UI: " + (uiOpen ? "Open" : "Closed"));
             }
 
             if (IsConfiguredKeyPressed(Plugin.VolumeUpKey.Value) && IsRelevantToLocalPlayer())
             {
                 float nextVolume = Mathf.Clamp(localVolume + Plugin.VolumeStep.Value, 0f, 2f);
+                localVolume = nextVolume;
 
                 if (Plugin.UseLocalVolumeOnly())
                 {
-                    localVolume = nextVolume;
                     ApplyLocalVolume();
-                    Plugin.Log("Applied local-only volume up: " + localVolume);
+                    Plugin.DbgLog("Applied local-only volume up: " + localVolume);
                 }
                 else
                 {
                     if (Boombox != null && Boombox.NetworkObject != null)
                     {
-                        Plugin.Log("Sending shared volume up request: " + nextVolume);
-                        BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, nextVolume);
+                        Plugin.DbgLog("Sending server volume: " + localVolume);
+                        BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, localVolume);
                     }
                     else
                     {
-                        localVolume = nextVolume;
                         ApplyLocalVolume();
-                        Plugin.Warn("NetworkObject missing, fell back to local volume up.");
+                        Plugin.Warn("Object missing, fell back to local volume, sorry!");
                     }
                 }
             }
@@ -159,25 +209,24 @@ namespace BoomBoxOverhaul
             if (IsConfiguredKeyPressed(Plugin.VolumeDownKey.Value) && IsRelevantToLocalPlayer())
             {
                 float nextVolume = Mathf.Clamp(localVolume - Plugin.VolumeStep.Value, 0f, 2f);
+                localVolume = nextVolume;
 
                 if (Plugin.UseLocalVolumeOnly())
                 {
-                    localVolume = nextVolume;
                     ApplyLocalVolume();
-                    Plugin.Log("Applied local-only volume down: " + localVolume);
+                    Plugin.DbgLog("Applied local-only volume down: " + localVolume);
                 }
                 else
                 {
                     if (Boombox != null && Boombox.NetworkObject != null)
                     {
-                        Plugin.Log("Sending shared volume down request: " + nextVolume);
-                        BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, nextVolume);
+                        Plugin.DbgLog("Sending server volume: " + localVolume);
+                        BoomBoxOverhaulNet.SendSetVolume(Boombox.NetworkObject.NetworkObjectId, localVolume);
                     }
                     else
                     {
-                        localVolume = nextVolume;
                         ApplyLocalVolume();
-                        Plugin.Warn("NetworkObject missing, fell back to local volume down.");
+                        Plugin.Warn("Object missing, fell back to local volume, sorry!");
                     }
                 }
             }
@@ -264,19 +313,20 @@ namespace BoomBoxOverhaul
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            GUI.Box(new Rect(20, 20, 520, 180), "BoomBoxOverhaulV2 By Henreh :D");
+            GUI.Box(new Rect(20, 20, 520, 205), "BoomBoxOverhaulV2 By Henreh :D");
             GUI.Label(new Rect(35, 50, 460, 20), "Paste YouTube video or playlist URL:");
             pendingUrl = GUI.TextField(new Rect(35, 72, 470, 22), pendingUrl, 1000);
             GUI.Label(new Rect(35, 97, 470, 20), "State: " + statusText);
             GUI.Label(new Rect(35, 115, 470, 20), "Dependencies: " + DependencyBootstrapper.GetStatus());
             GUI.Label(new Rect(35, 133, 470, 20), "Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%");
+            GUI.Label(new Rect(35, 151, 470, 20), "Audio Mode: " + Plugin.UseAudioMode());
 
             bool wasEnabled = GUI.enabled;
             GUI.enabled = DependencyBootstrapper.GetState().IsReady();
 
-            if (GUI.Button(new Rect(35, 155, 80, 20), "Play"))
+            if (GUI.Button(new Rect(35, 173, 80, 20), "Play"))
             {
-                Plugin.Log("Play button pressed.");
+                Plugin.DbgLog("Play button pressed.");
 
                 if (string.IsNullOrEmpty(pendingUrl))
                 {
@@ -292,20 +342,20 @@ namespace BoomBoxOverhaul
                 }
                 else
                 {
-                    Plugin.Log("Sending play request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId + " URL=" + pendingUrl.Trim());
+                    Plugin.DbgLog("Sending play request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId + " URL=" + pendingUrl.Trim());
                     BoomBoxOverhaulNet.SendRequestPlay(Boombox.NetworkObject.NetworkObjectId, pendingUrl.Trim());
                 }
             }
 
             GUI.enabled = wasEnabled;
 
-            if (GUI.Button(new Rect(125, 155, 80, 20), "Stop"))
+            if (GUI.Button(new Rect(125, 173, 80, 20), "Stop"))
             {
-                Plugin.Log("Stop button pressed.");
+                Plugin.DbgLog("Stop button pressed.");
 
                 if (Boombox != null && Boombox.NetworkObject != null)
                 {
-                    Plugin.Log("Sending stop request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId);
+                    Plugin.DbgLog("Sending stop request → NetworkObjectId=" + Boombox.NetworkObject.NetworkObjectId);
                     BoomBoxOverhaulNet.SendRequestStop(Boombox.NetworkObject.NetworkObjectId);
                 }
                 else
@@ -314,18 +364,182 @@ namespace BoomBoxOverhaul
                 }
             }
         }
+        //semi nuclear option because it is driving me nuts
 
-        private void ApplyLocalVolume()
+        private void ForceDisableSpatializer(AudioSource source)
         {
-            if (Audio != null)
+            if (source == null)
             {
-                Audio.volume = localVolume;
+                return;
             }
 
+            source.spatialize = false;
+            source.spatializePostEffects = false;
+        }
+        private void ApplyLocalVolume()
+        {
+            if (Audio == null || dspFilter == null)
+            {
+                return;
+            }
+
+            float clamped = Mathf.Clamp(localVolume, 0f, 2f);
+
+            Audio.volume = 1f;
+
+            if (clamped <= 0.0001f)
+            {
+                dspGain = 0f;
+            }
+            else if (clamped <= 1f)
+            {
+                dspGain = clamped;
+            }
+            else
+            {
+                float t = clamped - 1f;
+
+                // cleaner boost curve than before, this has already taken hours to get to a point where I am happy final adjustments i promise //again i promise this is the last time
+                dspGain = 1f + (t * 1.25f);
+            }
+
+            dspFilter.Gain = dspGain;
+
+            ApplyDistanceSettingsForCurrentVolume();
             UpdateTooltip();
-            RefreshHeldItemTooltip();
         }
 
+        public void ServerHandleSetVolume(float volume)
+        {
+            if (Plugin.LocalVolumeOnly.Value)
+            {
+                Plugin.Log("Server rejected server volume change, the host has it set to Local changes only!");
+                return;
+            }
+
+            float clamped = Mathf.Clamp(volume, 0f, 2f);
+
+            if (Boombox != null && Boombox.NetworkObject != null)
+            {
+                Plugin.DbgLog("Sending shared volume: " + clamped);
+                BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
+            }
+        }
+
+        public void ClientApplyNetworkVolume(float volume)
+        {
+            Plugin.DbgLog("ClientApplyNetworkVolume > " + volume);
+            localVolume = Mathf.Clamp(volume, 0f, 2f);
+            ApplyLocalVolume();
+        }
+
+        ////////////////////////////////////////
+        ///Muffled sound stuff (experimental)///
+        ////////////////////////////////////////
+
+        //Yeah I could not get this to work in a way that I was happy with may come back to it later maybe I wont IDK yet :/
+     
+        ////////////////////////////////////////
+        /// Distance Volume settings thingies///
+        ////////////////////////////////////////
+
+        private void ApplyDistanceSettingsForCurrentVolume()
+        {
+            if (Audio == null)
+            {
+                return;
+            }
+
+            float t = Mathf.Clamp(localVolume / 2f, 0f, 1f);
+            //t = t * t; // Should be better distance on higher volumes may go to t = t * t * t if more aggresive curve or may add config IDK yet
+            t = t * t * t; // More aggressive curve for distance
+
+            Audio.minDistance = Mathf.Lerp(1f, presetMinDistance, t);
+            Audio.maxDistance = Mathf.Lerp(4f, presetMaxDistance, t);
+        }
+
+        ///////////////////////////
+        //Audio mode (experiment)//
+        ///////////////////////////
+        private void ApplyAudioModeSettings()
+        {
+            Audio.spatializePostEffects = false;
+            Audio.spatialize = false;
+            try
+            {
+                if (Audio == null)
+                {
+                    return;
+                }
+
+                Audio.dopplerLevel = 0f;
+                Audio.spread = 0f;
+                Audio.reverbZoneMix = 0f;
+                Audio.spatialize = false;
+                Audio.reverbZoneMix = 0f;
+                Audio.spatialBlend = 1f;
+                Audio.rolloffMode = AudioRolloffMode.Linear;
+
+                switch (Plugin.UseAudioMode())
+                {
+                    case AudioModeType.Realistic:
+                        presetMinDistance = 2f;
+                        presetMaxDistance = 18f;
+                        break;
+
+                    case AudioModeType.PureMusic:
+                        presetMinDistance = 6f;
+                        presetMaxDistance = 40f;
+                        break;
+
+                    default:  //Default is balanced "Because it just works" - Todd howard
+                        presetMinDistance = 4f;
+                        presetMaxDistance = 34f;
+                        break;
+                }
+
+                ApplyDistanceSettingsForCurrentVolume();
+
+                Plugin.Log("Applied Audio Preset: " + Plugin.UseAudioMode());
+                UpdateTooltip();
+                RefreshHeldItemTooltip();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Warn("Failed to apply Audio Preset: " + ex);
+            }
+        }
+
+        //Mod mismatch stuff
+
+        private bool HasModMismatch(out string missingList)
+        {
+            missingList = "";
+
+
+            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer || NetworkManager.Singleton.ConnectedClients == null)
+            {
+                return false;
+            }
+
+            List<string> missing = new List<string>();
+            foreach (KeyValuePair<ulong, NetworkClient> kvp in NetworkManager.Singleton.ConnectedClients)
+            {
+                if (!BoomBoxOverhaulNet.IsClientKnownModded(kvp.Key))
+                {
+                    missing.Add(BoomBoxOverhaulNet.GetClientDisplayName(kvp.Key));
+                }
+            }
+
+            if (missing.Count == 0)
+            {
+                return false;
+            }
+
+            missingList = string.Join(", ", missing.ToArray());
+            return true;
+
+        }
         private void RefreshHeldItemTooltip()
         {
             try
@@ -347,6 +561,8 @@ namespace BoomBoxOverhaul
             }
         }
 
+
+
         private void StopVanillaBoomboxAudio()
         {
             try
@@ -356,9 +572,10 @@ namespace BoomBoxOverhaul
                     return;
                 }
 
-                if (Boombox.boomboxAudio != null && Boombox.boomboxAudio != Audio)
+                if (Boombox.boomboxAudio != null)//changed to allow regular drop place sfx tro prevent unity complaining about null audio clip
                 {
                     Boombox.boomboxAudio.Stop();
+                    ForceDisableSpatializer(Boombox.boomboxAudio);
                 }
 
                 Boombox.isPlayingMusic = false;
@@ -378,7 +595,6 @@ namespace BoomBoxOverhaul
                 Audio.Stop();
             }
         }
-
         private void SetCameraLocked(bool locked)
         {
             cameraLocked = locked;
@@ -442,25 +658,39 @@ namespace BoomBoxOverhaul
             }
         }
 
+        private void ApplyWeightSettings()
+        {
+            try
+            {
+                if (Boombox == null || Boombox.itemProperties == null)
+                {
+                    return;
+                }
+
+                if (Plugin.UseWeightlessBoombox())
+                {
+                    Boombox.itemProperties.weight = 1f;
+                    Plugin.Log("The boombox is as light as a feather!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Warn("Unfortunately the boombox is made of tungsten: " + ex);
+            }
+        }
+        public void RefreshWeightSettingsFromSync()
+        {
+            ApplyWeightSettings();
+        }
         private string GetScrollingTrackText()
         {
-            string title = "None";
-
-            if (Audio != null && Audio.clip != null && !string.IsNullOrEmpty(Audio.clip.name))
-            {
-                title = Audio.clip.name;
-            }
-            else if (!string.IsNullOrEmpty(currentVideoId))
-            {
-                title = currentVideoId;
-            }
-
+            string title = currentTrackTitle;
             if (string.IsNullOrEmpty(title))
             {
                 return "None";
             }
 
-            const int visibleLength = 28;
+            const int visibleLength = 24;
 
             if (title.Length <= visibleLength)
             {
@@ -477,7 +707,6 @@ namespace BoomBoxOverhaul
 
             return scrolling.Substring(tooltipScrollIndex, visibleLength);
         }
-
         private void UpdateTooltip()
         {
             if (Boombox == null || Boombox.itemProperties == null)
@@ -492,8 +721,6 @@ namespace BoomBoxOverhaul
                 "[" + Plugin.OpenUiKey.Value + "] URL Menu",
                 "[" + Plugin.VolumeDownKey.Value + "/" + Plugin.VolumeUpKey.Value + "] Volume: " + Mathf.RoundToInt(localVolume * 100f) + "%",
                 "Track: " + scrollingTitle,
-                "State: " + statusText,
-                "Deps: " + DependencyBootstrapper.GetStatus()
             };
         }
 
@@ -555,7 +782,7 @@ namespace BoomBoxOverhaul
 
         public void ServerHandlePlay(ulong requesterClientId, string url)
         {
-            Plugin.Log("ServerHandlePlay called from client " + requesterClientId + " URL=" + url);
+            Plugin.DbgLog("ServerHandlePlay called from client " + requesterClientId + " URL=" + url);
 
             if (!DependencyBootstrapper.GetState().IsReady())
             {
@@ -574,6 +801,22 @@ namespace BoomBoxOverhaul
                 {
                     BoomBoxOverhaulNet.SendRejectPlay(requesterClientId, Boombox.NetworkObject.NetworkObjectId, "Invalid URL");
                 }
+                return;
+            }
+
+            string missingList;
+            if (HasModMismatch(out missingList))
+            {
+                if (Boombox != null && Boombox.NetworkObject != null)
+                {
+                    BoomBoxOverhaulNet.SendRejectPlay(
+                        requesterClientId,
+                        Boombox.NetworkObject.NetworkObjectId,
+                        "BoomBoxOverhaul mod mismatch for the following: " + missingList + ". All players need the mod to play music, sorry!" //Duh obviously
+                        );
+                }
+
+                Plugin.Warn("Blocked Playback due to mod mismatch for: " + missingList);
                 return;
             }
 
@@ -637,7 +880,7 @@ namespace BoomBoxOverhaul
             PopulateExpectedClients();
 
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            Plugin.Log("Broadcasting prepare track for " + currentVideoId);
+            Plugin.DbgLog("Broadcasting prepare track for " + currentVideoId);
             BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
@@ -655,15 +898,17 @@ namespace BoomBoxOverhaul
             isPreparing = false;
         }
 
+        private string currentTrackTitle = "None";
         public void ClientPrepareTrack(string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
         {
-            Plugin.Log("ClientPrepareTrack START → " + videoId);
+            Plugin.DbgLog("ClientPrepareTrack START → " + videoId);
 
             currentVideoId = videoId;
             playlist.VideoIds.Clear();
             playlist.VideoIds.AddRange(playlistIds);
             playlist.Index = playlistIndex;
             statusText = "Preparing...";
+            currentTrackTitle = "Loading...";
             isPreparing = true;
             isPlayingCustom = false;
             tooltipScrollIndex = 0;
@@ -684,7 +929,7 @@ namespace BoomBoxOverhaul
             bool fetchOk = false;
             TrackInfo info = new TrackInfo();
 
-            Plugin.Log("Preparing local track download for: " + videoId);
+            Plugin.DbgLog("Preparing local track download for: " + videoId);
             Plugin.Log("Downloading track: " + videoId);
 
             yield return RunBlockingTask(delegate
@@ -704,7 +949,7 @@ namespace BoomBoxOverhaul
                 yield break;
             }
 
-            Plugin.Log("Download COMPLETE: " + videoId);
+            Plugin.DbgLog("Download COMPLETE: " + videoId);
             Plugin.Log("Local track download complete for: " + videoId);
 
             statusText = "Loading clip...";
@@ -727,25 +972,19 @@ namespace BoomBoxOverhaul
                 }
 
                 AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
-                clip.name = string.IsNullOrEmpty(info.title) ? videoId : info.title;
 
-                if (Audio.clip != null && Audio.clip != clip)
-                {
-                    try
-                    {
-                        Destroy(Audio.clip);
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                Audio.clip = clip;
+                currentTrackTitle = string.IsNullOrEmpty(info.title) ? "Unknown Title" : CleanTrackTitle(info.title);
                 tooltipScrollIndex = 0;
                 tooltipScrollTimer = 0f;
+                clip.name = currentTrackTitle;
+
+                //ClearBoostedClip();
+                basePlaybackClip = clip;
+                Audio.clip = basePlaybackClip;
+
                 ApplyLocalVolume();
                 statusText = "Ready: " + clip.name;
-                Plugin.Log("Clip READY: " + videoId);
+                Plugin.DbgLog("Clip READY: " + videoId);
                 Plugin.Log("Local clip ready for: " + videoId);
 
                 if (Boombox != null && Boombox.NetworkObject != null)
@@ -754,7 +993,41 @@ namespace BoomBoxOverhaul
                 }
             }
         }
+        //I actually made reference notes for this
+        private string CleanTrackTitle(string title)
+        {
+            if (string.IsNullOrEmpty(title))
+            {
+                return "None";
+            }
+            string cleaned = title.Trim();
+            //I hate regex but also love it 
+            cleaned = Regex.Replace(cleaned, @"\[[^\]]*\]|\([^\)]*\)", ""); // [] + () content cleanup
+            cleaned = Regex.Replace(cleaned, @"\s*-\s*YouTube$", "", RegexOptions.IgnoreCase); // Trailing youtbe suffix cleanup (maybe)
+            cleaned = Regex.Replace(cleaned, @"\bVEVO\b", "", RegexOptions.IgnoreCase); // Good for old songs (VEVO cleanup)
+            cleaned = Regex.Replace(cleaned, @"\bTopic\b", "", RegexOptions.IgnoreCase);
 
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();// Collapse whitespace for artist and title 
+
+            Match dashMatch = Regex.Match(cleaned, @"^\s*[^-]+?\s+-\s+(.+)$");// For ${artist} ${songname} style titles will only keep content after first dash (seems to be the common way of formatting youtube titles with artist first, keep a look at this one)
+            if (dashMatch.Success)
+            {
+                cleaned = dashMatch.Groups[1].Value.Trim();
+            }
+
+            cleaned = Regex.Replace(cleaned, @"^[\-\-\-:\|\s]+", "");// Remove leftover leading seperators 
+            cleaned = Regex.Replace(cleaned, @"[\-\-\-:\|\s]+$", "");// Remove leftover trailing sperators
+
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();// Collapse whitespace again
+
+            if (string.IsNullOrEmpty(cleaned))
+            {
+                return "Unknown Title";
+            }
+
+            return cleaned;
+
+        }
         public void ServerNotifyReady(ulong clientId, bool success)
         {
             if (success)
@@ -820,6 +1093,7 @@ namespace BoomBoxOverhaul
         {
             Plugin.Log("ClientBeginPlayback → " + videoId);
 
+            ApplyAudioModeSettings();
             currentVideoId = videoId;
             isPreparing = false;
             isPlayingCustom = true;
@@ -827,12 +1101,18 @@ namespace BoomBoxOverhaul
             tooltipScrollIndex = 0;
             tooltipScrollTimer = 0f;
 
-            if (Audio != null && Audio.clip != null)
+            if (Audio != null && basePlaybackClip != null)
             {
                 suppressVanillaStopOnce = true;
                 StopVanillaBoomboxAudio();
                 Audio.Stop();
                 Audio.time = 0f;
+
+                ApplyAudioModeSettings();
+                Audio.clip = basePlaybackClip;
+                ApplyLocalVolume();
+
+
                 Audio.Play();
             }
             else
@@ -843,7 +1123,7 @@ namespace BoomBoxOverhaul
 
         public void ServerHandleStop()
         {
-            Plugin.Log("ServerHandleStop called");
+            Plugin.DbgLog("ServerHandleStop called");
 
             if (Boombox != null && Boombox.NetworkObject != null)
             {
@@ -853,11 +1133,15 @@ namespace BoomBoxOverhaul
 
         public void ClientStopPlayback()
         {
-            Plugin.Log("ClientStopPlayback called");
+            Plugin.DbgLog("ClientStopPlayback called");
 
             isPreparing = false;
             isPlayingCustom = false;
             statusText = "Stopped";
+            currentTrackTitle = "None";
+            basePlaybackClip = null;
+
+
 
             if (localLoadRoutine != null)
             {
@@ -912,7 +1196,7 @@ namespace BoomBoxOverhaul
             PopulateExpectedClients();
 
             string currentSourceUrl = "https://www.youtube.com/watch?v=" + currentVideoId;
-            Plugin.Log("Broadcasting next prepare track for " + currentVideoId);
+            Plugin.DbgLog("Broadcasting next prepare track for " + currentVideoId);
             BoomBoxOverhaulNet.BroadcastPrepareTrack(Boombox.NetworkObject.NetworkObjectId, currentSourceUrl, currentVideoId, playlist.Index, playlist.VideoIds.ToArray());
 
             if (serverWaitRoutine != null)
@@ -960,7 +1244,7 @@ namespace BoomBoxOverhaul
 
         public bool ShouldSuppressVanillaStop()
         {
-            if (!Plugin.KeepPlayingPocketed.Value)
+            if (!Plugin.UseKeepPlayingPocketed())
             {
                 return false;
             }
@@ -972,30 +1256,6 @@ namespace BoomBoxOverhaul
             }
 
             return isPlayingCustom;
-        }
-
-        public void ServerHandleSetVolume(float volume)
-        {
-            if (Plugin.LocalVolumeOnly.Value)
-            {
-                Plugin.Log("Server rejected shared volume change because LocalVolumeOnly is enabled on host.");
-                return;
-            }
-
-            float clamped = Mathf.Clamp(volume, 0f, 2f);
-
-            if (Boombox != null && Boombox.NetworkObject != null)
-            {
-                Plugin.Log("Broadcasting shared volume: " + clamped);
-                BoomBoxOverhaulNet.BroadcastApplyVolume(Boombox.NetworkObject.NetworkObjectId, clamped);
-            }
-        }
-
-        public void ClientApplyNetworkVolume(float volume)
-        {
-            Plugin.Log("ClientApplyNetworkVolume → " + volume);
-            localVolume = Mathf.Clamp(volume, 0f, 2f);
-            ApplyLocalVolume();
         }
     }
 }

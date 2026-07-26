@@ -1,0 +1,19 @@
+{
+    "cSpell.words": [
+        "dlp",
+        "ffmpeg",
+        "serverwide",
+        "smidge"
+    ],
+    "cSpell.ignoreWords": [
+        "serverwide"
+    ],
+    "spellright.language": [
+        "en"
+    ],
+    "spellright.documentTypes": [
+        "markdown",
+        "latex",
+        "plaintext"
+    ]
+}

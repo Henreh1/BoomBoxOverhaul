@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 
-namespace BoomBoxOverhaul
+namespace BoomBoxOverhaul //Tried to use wrapper to handle ytdlp stuff but could not solve log spam, so reverting to manual method until I look into it more, sorry 753 :(
 {
     internal static class YtDlpBridge
     {

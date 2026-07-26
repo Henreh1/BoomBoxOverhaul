@@ -1,3 +1,4 @@
+using GameNetcodeStuff;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,11 +20,15 @@ namespace BoomBoxOverhaul
         private const string MsgSetVolume = "BoomBoxOverhaul_SetVolume";
         private const string MsgApplyVolume = "BoomBoxOverhaul_ApplyVolume";
         private const string MsgSyncSettings = "BoomBoxOverhaul_SyncSettings";
+        private const string MsgModPresent = "BoomBoxOverhaul_ModPresent";
 
         private static MonoBehaviour host;
         private static bool initialized;
         private static bool handlersRegistered;
         private static NetworkManager boundManager;
+        
+        private static HashSet<ulong> knownModdedClients = new HashSet<ulong>();
+        private static bool announcedPresence = false;
 
         public static void Initialize(MonoBehaviour coroutineHost)
         {
@@ -41,17 +46,67 @@ namespace BoomBoxOverhaul
         {
             while (true)
             {
-                TryBindToNetworkManager();
-
-                if (boundManager != null && handlersRegistered && boundManager.IsServer)
-                {
-                    BroadcastSyncSettings(Plugin.LocalVolumeOnly.Value);
-                }
-
+            TryBindToNetworkManager();
                 yield return new WaitForSeconds(1f);
-            }
+        }
         }
 
+        private static void OnClientListChanged(ulong clientID)
+        {
+            if (boundManager == null || !boundManager.IsServer)
+            {
+                return;
+            }
+
+            MarkHostAsModded();
+
+            ulong[] currentIds = GetConnectedClientIds();
+            HashSet<ulong> currentSet = new HashSet<ulong>(currentIds);
+
+            List<ulong> toRemove = new List<ulong>();
+            foreach (ulong known in knownModdedClients)
+            {
+                if (!currentSet.Contains(known))
+                {
+                    toRemove.Add(known);
+                }
+            }
+
+            int i;
+            for (i = 0; i < toRemove.Count; i++)
+            {
+                knownModdedClients.Remove(toRemove[i]);
+            }
+
+            BroadcastSyncSettings(
+                Plugin.LocalVolumeOnly.Value,
+                Plugin.WeightlessBoombox.Value);
+        }
+
+        private static bool clientEventsHooked = false;
+
+        private static void UnhookClientEvents()
+        {
+            if (boundManager == null || !clientEventsHooked)
+            {
+                return;
+            }
+            boundManager.OnClientConnectedCallback -= OnClientListChanged;
+            boundManager.OnClientDisconnectCallback -= OnClientListChanged;
+            clientEventsHooked = false;
+        }
+        private static void HookClientEvents()
+        {
+            if (boundManager == null || clientEventsHooked)
+            {
+                return;
+            }
+
+            boundManager.OnClientConnectedCallback += OnClientListChanged;
+            boundManager.OnClientDisconnectCallback += OnClientListChanged;
+
+            clientEventsHooked = true;
+        }
         private static void TryBindToNetworkManager()
         {
             NetworkManager nm = NetworkManager.Singleton;
@@ -62,15 +117,39 @@ namespace BoomBoxOverhaul
 
             if (boundManager != nm)
             {
+                UnhookClientEvents();
                 UnregisterHandlers();
+
                 boundManager = nm;
                 handlersRegistered = false;
-                Plugin.Log("BoomBoxOverhaul bound to NetworkManager.");
+                clientEventsHooked = false;
+                announcedPresence = false;
+                knownModdedClients.Clear();
+                Plugin.HostHasBoomBoxOverhaul = false;
+                Plugin.HasRecievedHostHandshake = false;
+
+                if (!handlersRegistered)
+                {
+                    RegisterHandlers();
+                }
+                HookClientEvents();
+                Plugin.Log("NetworkManger bind thingies done hopefully");
             }
 
             if (!handlersRegistered)
             {
                 RegisterHandlers();
+            }
+
+            if (boundManager != null && handlersRegistered && boundManager.IsServer)
+            {
+                 MarkHostAsModded();
+            }
+
+            if (boundManager != null && handlersRegistered && boundManager.IsClient && !announcedPresence)
+            {
+                SendModPresent();
+                announcedPresence = true;
             }
         }
 
@@ -93,6 +172,7 @@ namespace BoomBoxOverhaul
             mm.RegisterNamedMessageHandler(MsgSetVolume, OnSetVolume);
             mm.RegisterNamedMessageHandler(MsgApplyVolume, OnApplyVolume);
             mm.RegisterNamedMessageHandler(MsgSyncSettings, OnSyncSettings);
+            mm.RegisterNamedMessageHandler(MsgModPresent, OnModPresent);
 
             handlersRegistered = true;
             Plugin.Log("BoomBoxOverhaul network handlers registered.");
@@ -117,11 +197,92 @@ namespace BoomBoxOverhaul
             mm.UnregisterNamedMessageHandler(MsgSetVolume);
             mm.UnregisterNamedMessageHandler(MsgApplyVolume);
             mm.UnregisterNamedMessageHandler(MsgSyncSettings);
-
+            mm.UnregisterNamedMessageHandler(MsgModPresent);
             handlersRegistered = false;
             Plugin.Log("BoomBoxOverhaul network handlers unregistered.");
         }
+        //Modded client and host checks 
+        //Roughish way
+        public static void SendModPresent()
+        {
+            if (boundManager == null || !handlersRegistered || !boundManager.IsClient)
+            {
+                return;
+            }
 
+            using (FastBufferWriter writer = new FastBufferWriter(8, Allocator.Temp))
+            {
+                boundManager.CustomMessagingManager.SendNamedMessage(MsgModPresent, NetworkManager.ServerClientId, writer);
+            }
+        }
+
+        private static void OnModPresent(ulong senderClientId, FastBufferReader reader)
+        {
+            if (!knownModdedClients.Contains( senderClientId))
+            {
+                knownModdedClients.Add(senderClientId);
+            }
+
+            if (boundManager != null && boundManager.IsClient && senderClientId == NetworkManager.ServerClientId)
+            {
+                Plugin.HostHasBoomBoxOverhaul = true;
+                Plugin.HasRecievedHostHandshake = true;
+            }
+        }
+
+        public static void MarkHostAsModded()
+        {
+            if (boundManager != null && boundManager.IsServer)
+            {
+                knownModdedClients.Add(NetworkManager.ServerClientId);
+                Plugin.HostHasBoomBoxOverhaul = true;
+                Plugin.HasRecievedHostHandshake = true;
+            }
+        }
+
+        public static bool IsClientKnownModded(ulong clientId)
+        {
+            return knownModdedClients.Contains(clientId);
+        }
+
+        public static void RemoveKnownClient(ulong clientId)
+        {
+            if (knownModdedClients.Contains(clientId))
+            {
+                knownModdedClients.Remove(clientId);
+            }
+        }
+
+        /// get names
+        
+        public static string GetClientDisplayName(ulong clientId)
+        {
+            try
+            {
+                if (boundManager == null || boundManager.ConnectedClients == null)
+                {
+                    return clientId.ToString();
+                }
+
+                NetworkClient client;
+                if (!boundManager.ConnectedClients.TryGetValue(clientId, out client))
+                {
+                    return clientId.ToString();
+                }
+
+                if (client != null && client.PlayerObject != null)
+                {
+                    PlayerControllerB player = client.PlayerObject.GetComponent<PlayerControllerB>();
+                    if (player != null && !string.IsNullOrEmpty(player.playerUsername))
+                    {
+                        return player.playerUsername;
+                    }
+                }
+            }
+            catch { 
+            }
+            return clientId.ToString();
+        }
         public static UnifiedBoomboxController GetController(ulong networkObjectId)
         {
             if (boundManager == null || boundManager.SpawnManager == null)
@@ -153,7 +314,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgRequestPlay, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent play request for object " + networkObjectId);
+            Plugin.DbgLog("Sent play request for object " + networkObjectId);
         }
 
         public static void BroadcastPrepareTrack(ulong networkObjectId, string canonicalUrl, string videoId, int playlistIndex, string[] playlistIds)
@@ -186,7 +347,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast prepare track for object " + networkObjectId);
+            Plugin.DbgLog("Broadcast prepare track for object " + networkObjectId);
         }
 
         public static void SendNotifyReady(ulong networkObjectId, bool success)
@@ -204,7 +365,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgNotifyReady, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent ready state " + success + " for object " + networkObjectId);
+            Plugin.DbgLog("Sent ready state " + success + " for object " + networkObjectId);
         }
 
         public static void BroadcastBeginPlaybackReadyOnly(ulong networkObjectId, string videoId, HashSet<ulong> readyClientIds)
@@ -225,7 +386,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast begin playback to ready clients only: " + readyClientIds.Count);
+            Plugin.DbgLog("Broadcast begin playback to ready clients only: " + readyClientIds.Count);
         }
 
         public static void SendRequestStop(ulong networkObjectId)
@@ -242,7 +403,7 @@ namespace BoomBoxOverhaul
                 boundManager.CustomMessagingManager.SendNamedMessage(MsgRequestStop, NetworkManager.ServerClientId, writer);
             }
 
-            Plugin.Log("Sent stop request for object " + networkObjectId);
+            Plugin.DbgLog("Sent stop request for object " + networkObjectId);
         }
 
         public static void BroadcastStopPlayback(ulong networkObjectId)
@@ -264,7 +425,7 @@ namespace BoomBoxOverhaul
                 }
             }
 
-            Plugin.Log("Broadcast stop playback for object " + networkObjectId);
+            Plugin.DbgLog("Broadcast stop playback for object " + networkObjectId);
         }
 
         public static void SendRejectPlay(ulong targetClientId, ulong networkObjectId, string reason)
@@ -319,7 +480,7 @@ namespace BoomBoxOverhaul
             }
         }
 
-        public static void BroadcastSyncSettings(bool localVolumeOnly)
+       public static void BroadcastSyncSettings(bool localVolumeOnly, bool WeightlessBoombox)
         {
             if (boundManager == null || !handlersRegistered || !boundManager.IsServer)
             {
@@ -333,16 +494,17 @@ namespace BoomBoxOverhaul
                 using (FastBufferWriter writer = new FastBufferWriter(64, Allocator.Temp))
                 {
                     writer.WriteValueSafe(localVolumeOnly);
+                    writer.WriteValueSafe(WeightlessBoombox);
                     boundManager.CustomMessagingManager.SendNamedMessage(MsgSyncSettings, clientIds[i], writer);
                 }
             }
 
-            Plugin.Log("Broadcast synced settings. LocalVolumeOnly = " + localVolumeOnly);
+            Plugin.Log("Sent synchronised settings. LocalVolumeOnly = " + localVolumeOnly + ", WeightlessBoombx = " + WeightlessBoombox);
         }
 
         private static void OnRequestPlay(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnRequestPlay received from client " + senderClientId);
+            Plugin.DbgLog("OnRequestPlay received from client " + senderClientId);
 
             ulong networkObjectId;
             string url;
@@ -363,7 +525,7 @@ namespace BoomBoxOverhaul
 
         private static void OnPrepareTrack(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnPrepareTrack received");
+            Plugin.DbgLog("OnPrepareTrack received");
 
             ulong networkObjectId;
             string canonicalUrl;
@@ -403,7 +565,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out success);
 
-            Plugin.Log("OnNotifyReady received from " + senderClientId + " success=" + success);
+            Plugin.DbgLog("OnNotifyReady received from " + senderClientId + " success=" + success);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)
@@ -418,7 +580,7 @@ namespace BoomBoxOverhaul
 
         private static void OnBeginPlayback(ulong senderClientId, FastBufferReader reader)
         {
-            Plugin.Log("OnBeginPlayback received");
+            Plugin.DbgLog("OnBeginPlayback received");
 
             ulong networkObjectId;
             string videoId;
@@ -492,7 +654,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out volume);
 
-            Plugin.Log("OnSetVolume received from " + senderClientId + " volume=" + volume);
+            Plugin.DbgLog("OnSetVolume received from " + senderClientId + " volume=" + volume);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)
@@ -513,7 +675,7 @@ namespace BoomBoxOverhaul
             reader.ReadValueSafe(out networkObjectId);
             reader.ReadValueSafe(out volume);
 
-            Plugin.Log("OnApplyVolume received volume=" + volume);
+            Plugin.DbgLog("OnApplyVolume received volume=" + volume);
 
             UnifiedBoomboxController controller = GetController(networkObjectId);
             if (controller != null)
@@ -529,12 +691,33 @@ namespace BoomBoxOverhaul
         private static void OnSyncSettings(ulong senderClientId, FastBufferReader reader)
         {
             bool localVolumeOnly;
+            bool weightlessBoombox;
+
             reader.ReadValueSafe(out localVolumeOnly);
+            reader.ReadValueSafe(out weightlessBoombox);
+
+            bool changed =
+                !Plugin.HasSyncedVolumeMode || Plugin.SyncedLocalVolumeOnly != localVolumeOnly || Plugin.SyncedWeightlessBoombox != weightlessBoombox;
 
             Plugin.SyncedLocalVolumeOnly = localVolumeOnly;
             Plugin.HasSyncedVolumeMode = true;
 
-            Plugin.Log("Received synced settings. LocalVolumeOnly = " + localVolumeOnly);
+            Plugin.SyncedWeightlessBoombox = weightlessBoombox;
+            Plugin.HasSyncedWeightlessBoombox = true;
+
+            if (!changed)
+            {
+                return;
+            }
+
+            Plugin.Log("Recieved synchronised settings. LocalVolumeOnly = " + localVolumeOnly + ", WeightlessBoomx = " + weightlessBoombox);
+
+            UnifiedBoomboxController[] controllers = UnityEngine.Object.FindObjectsOfType<UnifiedBoomboxController>();
+            int i;
+            for (i = 0; i < controllers.Length; i++)
+            {
+                controllers[i].RefreshWeightSettingsFromSync();
+            }
         }
 
         private static ulong[] GetConnectedClientIds()
