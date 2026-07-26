@@ -2,6 +2,7 @@
 [![Repository](https://img.shields.io/badge/GitHub-BoomBoxOverhaul-181717?style=for-the-badge&logo=github)](https://github.com/Henreh1/BoomBoxOverhaul)
 [![Latest Version](https://img.shields.io/thunderstore/v/Clarity/BoomBoxOverhaul?style=for-the-badge&logo=thunderstore&logoColor=white)](https://thunderstore.io/c/lethal-company/p/Clarity/BoomBoxOverhaul/)
 [![Thunderstore Downloads](https://img.shields.io/thunderstore/dt/Clarity/BoomBoxOverhaul?style=for-the-badge&logo=thunderstore&logoColor=white)](https://thunderstore.io/c/lethal-company/p/Clarity/BoomBoxOverhaul/)
+# BoomBoxOverhaulV2, 2.1.0 is stuck in a form of Will i finish it?,  Will i not? I am working on a mod manager for a different game and that is consuming a lot of time :/
 
 * This is an overhaul of my original BoomboxOverhaul mod. The original mod was designed to work with a specific YouTube boombox mod that is no longer maintained. Because of this I decided to implement a working, albeit sometimes temperamental YouTube playback.
 
